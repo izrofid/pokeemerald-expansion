@@ -272,8 +272,9 @@ static void Usm_BuildDefaultMenuItems(void);
 static void Usm_AddMenuItem(enum Usm_Icons icon);
 static u32 Usm_CreateHandSprite(s16 x, s16 y);
 static void Usm_MoveItem(s8 dir);
-static void Usm_RedrawIcons(bool32 startAffine);
+static void Usm_RedrawIcons();
 static void Usm_DestroyVisibleIcons(void);
+static void Usm_SetIconFrame(u8 iconId, enum Usm_Activation activation);
 static void Usm_StartIconAffineAnim(u8 iconId);
 static void Usm_StopIconAffineAnim(u8 iconId);
 static void Usm_StartIconAnim(u8 iconId);
@@ -892,18 +893,10 @@ static struct Sprite* Usm_GetSelectedSprite(void)
 static void Usm_AnimateSelectedIcon(void)
 {
     for (u32 i = 0; i < sUsmState->visible.count; i++) {
-        struct Sprite* sprite = &gSprites[sUsmMemory->spriteIds[i]];
-        if (i != sUsmState->selectedIcon) {
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
-            StartSpriteAnim(sprite, 0);
-        }
-        else {
-            StartSpriteAnim(sprite, 1);
-            sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
-            u8 matrixNum = AllocOamMatrix();
-            sprite->oam.matrixNum = matrixNum;
-            StartSpriteAffineAnim(sprite, 0);
-        }
+        if (i != sUsmState->selectedIcon)
+            Usm_StopIconAnim(i);
+        else
+            Usm_StartIconAnim(i);
     }
 }
 
@@ -923,18 +916,21 @@ static void Usm_StopIconAffineAnim(u8 iconId)
     FreeSpriteOamMatrix(sprite);
 }
 
-static void Usm_StartIconAnim(u8 iconId)
+static void Usm_SetIconFrame(u8 iconId, enum Usm_Activation activation)
 {
     struct Sprite* sprite = Usm_GetIconSprite(iconId);
-    StartSpriteAnim(sprite, 1);
+    StartSpriteAnim(sprite, activation);
+}
+
+static void Usm_StartIconAnim(u8 iconId)
+{
+    Usm_SetIconFrame(iconId, USM_ACTIVE);
     Usm_StartIconAffineAnim(iconId);
 }
 
-
 static void Usm_StopIconAnim(u8 iconId)
 {
-    struct Sprite* sprite = Usm_GetIconSprite(iconId);
-    StartSpriteAnim(sprite, 0);
+    Usm_SetIconFrame(iconId, USM_INACTIVE);
     Usm_StopIconAffineAnim(iconId);
 }
 
@@ -1245,19 +1241,15 @@ static void Usm_MoveItem(s8 dir)
     sUsmState->selectedIcon = newIndex % USM_MAX_ICON_COUNT;
 
     Usm_CreateIcons(0, USM_ICON_YPOS);
-    StartSpriteAnim(Usm_GetSelectedSprite(), 1);
+    Usm_SetIconFrame(sUsmState->selectedIcon, 1);
     Usm_PrintIconLabel();
 }
 
-static void UNUSED Usm_RedrawIcons(bool32 startAffine)
+static void Usm_RedrawIcons()
 {
     Usm_DestroyVisibleIcons();
-
     Usm_CreateIcons(0, USM_ICON_YPOS);
-    if (startAffine)
-        Usm_AnimateSelectedIcon();
-    else
-        StartSpriteAnim(Usm_GetSelectedSprite(), 1);
+    Usm_AnimateSelectedIcon();
 }
 
 static void Usm_DestroyVisibleIcons(void)
