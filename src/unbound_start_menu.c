@@ -149,9 +149,9 @@ static const struct WindowTemplate sUsmWindowTemplates[] = {
     [USM_WIN_NAME] =
         {.bg = 0, .tilemapLeft = 0, .tilemapTop = 11, .width = 7, .height = 2, .paletteNum = 14, .baseBlock = 48},
     [USM_WIN_CLOCK] =
-        {.bg = 0, .tilemapLeft = 20, .tilemapTop = 11, .width = 10, .height = 2, .paletteNum = 14, .baseBlock = 62},
+        {.bg = 0, .tilemapLeft = 19, .tilemapTop = 11, .width = 11, .height = 2, .paletteNum = 14, .baseBlock = 62},
     [USM_WIN_HINTS] =
-        {.bg = 0, .tilemapLeft = 10, .tilemapTop = 18, .width = 20, .height = 2, .paletteNum = 14, .baseBlock = 82},
+        {.bg = 0, .tilemapLeft = 10, .tilemapTop = 18, .width = 20, .height = 2, .paletteNum = 14, .baseBlock = 84},
     DUMMY_WIN_TEMPLATE};
 
 
@@ -266,7 +266,7 @@ static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId);
 static void Usm_HandleDPadInput(u8 input);
 static enum Usm_Icons Usm_GetNextIcon(s8 change);
 static void GetCurrentDateTime(struct DateTime* dateTime);
-static void BuildDateTimeString(void);
+static void BuildDateTimeString(u8* buf);
 static void Usm_BuildMenuItems(void);
 static void Usm_BuildDefaultMenuItems(void);
 static void Usm_AddMenuItem(enum Usm_Icons icon);
@@ -613,7 +613,7 @@ static void Usm_PrintIconLabel(void)
 static void Usm_PrintClockText()
 {
     u8 winId = sUsmMemory->windowIds[USM_WIN_CLOCK];
-    BuildDateTimeString();
+    BuildDateTimeString(gStringVar4);
     s16 x = GetStringCenterAlignXOffset(FONT_SMALL, gStringVar4, GetWindowAttribute(winId, WINDOW_WIDTH) * 8);
     FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_CLOCK)));
     Usm_PrintText(sUsmMemory->windowIds[USM_WIN_CLOCK], FONT_SMALL, x, 0, sUsmWinFontColors[FONT_BLACK], gStringVar4);
@@ -670,12 +670,6 @@ static void Usm_LoadBgGfx(void)
     ScheduleBgCopyTilemapToVram(0);
 }
 
-static void GetCurrentDateTime(struct DateTime* dateTime)
-{
-    RtcCalcLocalTime();
-    ConvertTimeToDateTime(dateTime, &gLocalTime);
-}
-
 
 static const u8* const sMonthNames[13] = {
     [MONTH_JAN] = COMPOUND_STRING("Jan"), [MONTH_FEB] = COMPOUND_STRING("Feb"), [MONTH_MAR] = COMPOUND_STRING("Mar"),
@@ -691,21 +685,30 @@ static const u8* const sWeekdayNames[WEEKDAY_COUNT] = {
     [WEEKDAY_SAT] = COMPOUND_STRING("Sat"),
 };
 
-static void BuildDateTimeString(void)
+static void BuildDateTimeString(u8* buf)
 {
-    const u8* text = COMPOUND_STRING("{STR_VAR_1}. {STR_VAR_2}, {STR_VAR_3}");
+    u8 formattedBuffer[256];
+    formattedBuffer[0] = EOS;
+    u8* formattedBufferEnd = &formattedBuffer[0];
+
     struct DateTime dt;
-    GetCurrentDateTime(&dt);
+    ConvertTimeToDateTime(&dt, &gLocalTime);
 
-    StringCopy(gStringVar1, sWeekdayNames[dt.dayOfWeek]);
-    ConvertIntToDecimalStringN(gStringVar2, dt.day, STR_CONV_MODE_LEADING_ZEROS, 2);
+    u32 hour = (dt.hour + 11) % 12 + 1;
+    const u8* am = COMPOUND_STRING("AM");
+    const u8* pm = COMPOUND_STRING("PM");
 
-    ConvertIntToDecimalStringN(gStringVar3, dt.hour, STR_CONV_MODE_LEADING_ZEROS, 2);
-    StringAppend(gStringVar3, COMPOUND_STRING(":"));
-    ConvertIntToDecimalStringN(gStringVar4, dt.minute, STR_CONV_MODE_LEADING_ZEROS, 2);
-    StringAppend(gStringVar3, gStringVar4);
+    formattedBufferEnd = StringAppend(formattedBufferEnd, sWeekdayNames[dt.dayOfWeek]);
+    formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(". "));
+    formattedBufferEnd = ConvertIntToDecimalStringN(formattedBufferEnd, dt.day, STR_CONV_MODE_LEADING_ZEROS, 2);
+    formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(", "));
+    formattedBufferEnd = ConvertIntToDecimalStringN(formattedBufferEnd, hour, STR_CONV_MODE_LEADING_ZEROS, 2);
+    formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(":"));
+    formattedBufferEnd = ConvertIntToDecimalStringN(formattedBufferEnd, dt.minute, STR_CONV_MODE_LEADING_ZEROS, 2);
+    formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(" "));
+    formattedBufferEnd = StringAppend(formattedBufferEnd, (dt.hour >= 12) ? pm : am);
 
-    StringExpandPlaceholders(gStringVar4, text);
+    StringCopy(buf, formattedBuffer);
 }
 
 static void Usm_AddMenuItem(enum Usm_Icons icon)
