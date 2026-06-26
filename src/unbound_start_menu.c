@@ -1114,6 +1114,7 @@ static void Usm_HandleDPadInput(u8 input)
                 sUsmState->itemOffset++;
                 Usm_BuildVisibleList();
                 Usm_RedrawIcons();
+                Usm_PrintIconLabel();
             }
             return;
         }
@@ -1130,6 +1131,7 @@ static void Usm_HandleDPadInput(u8 input)
                 sUsmState->itemOffset--;
                 Usm_BuildVisibleList();
                 Usm_RedrawIcons();
+                Usm_PrintIconLabel();
             }
             return;
         }
