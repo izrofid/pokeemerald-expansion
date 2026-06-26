@@ -570,6 +570,12 @@ void Usm_InitStartMenu(void)
         return;
     }
 
+    if (GetFlashLevel())
+    {
+        SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_OBJWIN_ON);
+        SetGpuRegBits(REG_OFFSET_WINOUT, WINOUT_WINOBJ_OBJ);
+    }
+
     sUsmState = &sUsmMemory->state;
 
     sUsmState->page = sUsmSavedPage;
@@ -846,6 +852,8 @@ static void Usm_CreateIcons(s16 x, s16 y)
         u8 iconId = sUsmState->visible.iconIndex[i];
 
         u8 id = CreateSprite(sUsmMenuItems[iconId].template, posX, y, 1);
+        if (GetFlashLevel())
+            gSprites[id].copyToObjWin = TRUE;
         sUsmMemory->spriteIds[i] = id;
     }
 }
@@ -1274,6 +1282,8 @@ static u32 Usm_CreateHandSprite(s16 x, s16 y)
         SPRITE_SIZE(32x32), SPRITE_SHAPE(32x32), x, y, 0, SpriteCallbackDummy,
         TRUE);
     gSprites[spriteId].oam.priority = 0;
+    if (GetFlashLevel())
+        gSprites[spriteId].copyToObjWin = TRUE;
     return spriteId;
 }
 
