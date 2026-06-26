@@ -49,6 +49,7 @@
 #include "text.h"
 #include "trainer_card.h"
 #include "unbound_start_menu.h"
+#include "util.h"
 #include "window.h"
 #include <string.h>
 #include <sys/cdefs.h>
@@ -71,6 +72,7 @@ enum Usm_IconTiletags {
     USM_TILETAG_RETIRE,
     USM_TILETAG_DEBUG,
     USM_TILETAG_HAND,
+    USM_TILETAG_ARROW,
 };
 
 enum Usm_Paltags {
@@ -88,7 +90,6 @@ enum Usm_Windows {
     USM_WIN_HINTS,
     USM_WIN_COUNT,
 };
-
 struct Usm_VisibleIcons {
     u8 iconIndex[USM_MAX_ICON_COUNT];
     u8 count;
@@ -99,8 +100,8 @@ struct Usm_State {
     u8 loadState;
     u8 selectedIcon;
     u8 windowCount;
-    u8 page;
-    u8 pageCount;
+    u16 frameCounter;
+    u8 itemOffset;
     u8 items[USM_ICO_COUNT];
     u8 itemCount;
     struct Usm_VisibleIcons visible;
@@ -110,6 +111,8 @@ struct Usm_Memory {
     struct Usm_State state;
     u8 spriteIds[USM_MAX_ICON_COUNT];
     u8 windowIds[USM_WIN_COUNT];
+    u8 leftArrowId;
+    u8 rightArrowId;
 };
 
 struct Usm_MenuItem {
@@ -133,6 +136,7 @@ static const u32 sDebugIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprit
 static const u32 sRetireIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/retire.4bpp.smol");
 
 static const u32 sUsmHandGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/hand.4bpp.smol");
+static const u32 sUsmArrowGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/arrow.4bpp.smol");
 
 static const u16 sIconPal[] = INCBIN_U16("graphics/unbound_start_menu/sprites/icons.gbapal");
 
@@ -237,13 +241,14 @@ static const struct SpritePalette sSpritePalette_Icons = {.data = sIconPal, .tag
 static EWRAM_DATA struct Usm_Memory* sUsmMemory;
 static EWRAM_DATA struct Usm_State* sUsmState;
 static EWRAM_DATA u8 sUsmSavedIcon = 0;
-static EWRAM_DATA u8 sUsmSavedPage = 0;
+static EWRAM_DATA u8 sUsmSavedOffset = 0;
 
 // Tasks
 static void Task_UsmHandleMainInput(u8 taskId);
 static void Task_UsmHandleMoveItems(u8 taskId);
 static void Task_UsmFadeAndRunCallback(u8 taskId);
 static void Task_UsmRunCallbackNoFade(u8 taskId);
+static void Task_UsmUpdateFrameCounter(u8 taskId);
 
 // Static Functions
 static void Usm_LoadBgGfx(void);
@@ -259,18 +264,17 @@ static void Usm_PrintClockText();
 static void Usm_PrintButtonHints();
 static void Usm_AnimateSelectedIcon(void);
 static struct Sprite* Usm_GetIconSprite(u8 iconId);
-static void Usm_SwitchPage(s8 pageNum);
 static void Usm_ExitStartMenu(void);
 static u32 Usm_ReadKeys(void);
 static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId);
 static void Usm_HandleDPadInput(u8 input);
 static enum Usm_Icons Usm_GetNextIcon(s8 change);
-static void GetCurrentDateTime(struct DateTime* dateTime);
 static void BuildDateTimeString(u8* buf);
 static void Usm_BuildMenuItems(void);
 static void Usm_BuildDefaultMenuItems(void);
 static void Usm_AddMenuItem(enum Usm_Icons icon);
 static u32 Usm_CreateHandSprite(s16 x, s16 y);
+static u32 Usm_CreateArrowSprite(s16 x, s16 y, bool32 flip);
 static void Usm_MoveItem(s8 dir);
 static void Usm_RedrawIcons();
 static void Usm_DestroyVisibleIcons(void);
@@ -468,7 +472,7 @@ static bool8 StartMenuPlayerNameCallback(void)
 static bool8 StartMenuSaveCallback(void)
 {
     sUsmSavedIcon = 0;
-    sUsmSavedPage = 0;
+    sUsmSavedOffset = 0;
     SaveDialog_InitSave();
     LockPlayerFieldControls();
     FreezeObjectEvents();
@@ -521,7 +525,7 @@ static bool8 StartMenuLinkModePlayerNameCallback(void)
 static bool8 StartMenuBattlePyramidRetireCallback(void)
 {
     sUsmSavedIcon = 0;
-    sUsmSavedPage = 0;
+    sUsmSavedOffset = 0;
     SaveDialog_InitBattlePyramidRetire();
     LockPlayerFieldControls();
     FreezeObjectEvents();
@@ -545,7 +549,7 @@ static bool8 StartMenuBattlePyramidBagCallback(void)
 
 static bool8 StartMenuDebugCallback(void)
 {
-    sUsmSavedPage = 0;
+    sUsmSavedOffset = 0;
     sUsmSavedIcon = 0;
     Debug_ShowMainMenu();
 
@@ -555,6 +559,27 @@ return TRUE;
 static bool8 UNUSED StartMenuDexNavCallback(void)
 {
     return FALSE;
+}
+
+
+static void Usm_SpriteCallbackArrow(struct Sprite *sprite)
+{
+    bool32 show;
+    s8 maxOffset = SubtractClamped(0, USM_ICO_COUNT, sUsmState->itemCount, USM_MAX_ICON_COUNT);
+
+    if (sprite->hFlip)
+    {
+        show = (sUsmState->itemOffset > 0);
+    }
+    else
+        show = (sUsmState->itemOffset < maxOffset);
+
+    if (!show)
+    {
+        sprite->invisible = TRUE;
+        return;
+    }
+    sprite->invisible = (sUsmState->frameCounter % 32) >= 16;
 }
 
 void Usm_InitStartMenu(void)
@@ -581,14 +606,11 @@ void Usm_InitStartMenu(void)
 
     sUsmState = &sUsmMemory->state;
 
-    sUsmState->page = sUsmSavedPage;
+    sUsmState->itemOffset = sUsmSavedOffset;
     sUsmState->selectedIcon = sUsmSavedIcon;
-    sUsmSavedPage = 0;
+    sUsmSavedOffset = 0;
     sUsmSavedIcon = 0;
     Usm_BuildMenuItems();
-
-    sUsmState->pageCount =
-        (sUsmState->itemCount + USM_MAX_ICON_COUNT - 1) / USM_MAX_ICON_COUNT;
 
     Usm_LoadBgGfx();
     Usm_SetupWindows();
@@ -599,8 +621,11 @@ void Usm_InitStartMenu(void)
     Usm_LoadIconGfx();
     Usm_LoadIconPalette();
     Usm_CreateIcons(0, USM_ICON_YPOS);
+    sUsmMemory->leftArrowId = Usm_CreateArrowSprite(12, USM_ICON_YPOS, TRUE);
+    sUsmMemory->rightArrowId = Usm_CreateArrowSprite(DISPLAY_WIDTH - 12, USM_ICON_YPOS, FALSE);
     Usm_StartIconAnim(sUsmState->selectedIcon);
-    CreateTask(Task_UsmHandleMainInput, 0);
+    CreateTask(Task_UsmHandleMainInput, 1);
+    CreateTask(Task_UsmUpdateFrameCounter, 0);
 }
 
 static void Usm_PrintText(u8 winId, u8 fontId, s16 x, s16 y, const u8* color, const u8* str)
@@ -632,7 +657,7 @@ static void Usm_PrintClockText()
 static void Usm_PrintButtonHints()
 {
     u8 winId = sUsmMemory->windowIds[USM_WIN_HINTS];
-    const u8* text = COMPOUND_STRING("{L_BUTTON} Page    {R_BUTTON} Move    ");
+    const u8* text = COMPOUND_STRING("{SELECT_BUTTON} Move");
     s16 x = GetStringRightAlignXOffset(FONT_SMALL_NARROWER, text, GetWindowAttribute(winId, WINDOW_WIDTH) * 8);
     FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_HINTS)));
     Usm_PrintText(winId, FONT_SMALL_NARROWER, x, 0, sUsmWinFontColors[FONT_WHITE], text);
@@ -761,6 +786,20 @@ static void Usm_BuildMenuItems(void)
         return;
     }
 
+    for (u32 item = 0; item < USM_ICO_COUNT; item++)
+    {
+        if (!Usm_IsItemAvailable(item))
+            continue;
+
+        if (!Usm_ShouldPrepend(item))
+            continue;
+
+        if (Usm_ListContains(item, saved->items, saved->count))
+            continue;
+
+        Usm_AddMenuItem(item);
+    }
+
     for (u32 i = 0; i < saved->count; i++)
     {
         enum Usm_Icons item = saved->items[i];
@@ -768,8 +807,13 @@ static void Usm_BuildMenuItems(void)
         if (item >= USM_ICO_COUNT)
             continue;
 
-        if (Usm_IsItemAvailable(item))
-            Usm_AddMenuItem(item);
+        if (!Usm_IsItemAvailable(item))
+            continue;
+
+        if (Usm_ListContains(item, sUsmState->items, sUsmState->itemCount))
+            continue;
+
+        Usm_AddMenuItem(item);
     }
 
     for (u32 item = 0; item < USM_ICO_COUNT; item++)
@@ -779,10 +823,8 @@ static void Usm_BuildMenuItems(void)
 
         if (Usm_ListContains(item, sUsmState->items, sUsmState->itemCount))
             continue;
-        else
-        {
-            Usm_AddMenuItem(item);
-        }
+
+        Usm_AddMenuItem(item);
     }
 }
 
@@ -822,7 +864,7 @@ static void Usm_BuildDefaultMenuItems(void)
 
 static void Usm_BuildVisibleList(void)
 {
-    u8 start = sUsmState->page * USM_MAX_ICON_COUNT;
+    u8 start = sUsmState->itemOffset;
     u8 end = start + USM_MAX_ICON_COUNT;
 
     if (end > sUsmState->itemCount)
@@ -844,7 +886,6 @@ void Usm_LoadIconPalette(void)
 
 static void Usm_CreateIcons(s16 x, s16 y)
 {
-
     u8 count = sUsmState->visible.count;
 
     s16 startX = 24 + (USM_BANNER_WIDTH - (count * USM_ICON_WIDTH)) / 2;
@@ -866,21 +907,6 @@ static void Usm_LoadIconGfx(void)
     for (u32 i = 0; i < USM_ICO_COUNT; i++) {
         LoadCompressedSpriteSheet(sUsmMenuItems[i].sheet);
     }
-}
-
-static void Usm_SwitchPage(s8 pageNum)
-{
-    if (sUsmState->pageCount <= 1)
-        return;
-
-    sUsmState->page = (sUsmState->page + pageNum) % sUsmState->pageCount;
-    sUsmState->selectedIcon = 0;
-
-    Usm_DestroyVisibleIcons();
-    Usm_BuildVisibleList();
-    Usm_CreateIcons(0, USM_ICON_YPOS);
-    Usm_StartIconAnim(sUsmState->selectedIcon);
-    Usm_PrintIconLabel();
 }
 
 static struct Sprite* Usm_GetSelectedSprite(void)
@@ -961,6 +987,12 @@ static void Usm_ExitStartMenu(void)
     FreeSpritePaletteByTag(USM_PALTAG_ICON);
     ResetPreservedPalettesInWeather();
 
+    DestroySprite(&gSprites[sUsmMemory->leftArrowId]);
+    DestroySprite(&gSprites[sUsmMemory->rightArrowId]);
+    FreeSpriteTilesByTag(USM_TILETAG_ARROW);
+
+    DestroyTask(FindTaskIdByFunc(Task_UsmUpdateFrameCounter));
+
     CpuFastFill(0, buf, BG_SCREEN_SIZE);
     CpuFastFill(0, (void*)BG_CHAR_ADDR(2), BG_CHAR_SIZE);
     ScheduleBgCopyTilemapToVram(0);
@@ -997,6 +1029,9 @@ static u32 Usm_ReadKeys(void)
     if (JOY_NEW(R_BUTTON)) {
         return R_BUTTON;
     }
+    if (JOY_NEW(SELECT_BUTTON)) {
+        return SELECT_BUTTON;
+    }
     if (JOY_NEW(DPAD_UP)) {
         return DPAD_UP;
     }
@@ -1024,7 +1059,7 @@ static void Task_UsmHandleMainInput(u8 taskId)
             u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedIcon];
             gMenuCallback = sUsmMenuItems[iconId].callback;
             sUsmSavedIcon = sUsmState->selectedIcon;
-            sUsmSavedPage = sUsmState->page;
+            sUsmSavedOffset = sUsmState->itemOffset;
             if (sUsmMenuItems[iconId].shouldFade)
                 func = Task_UsmFadeAndRunCallback;
             else
@@ -1038,11 +1073,7 @@ static void Task_UsmHandleMainInput(u8 taskId)
             UnlockPlayerFieldControls();
             DestroyTask(taskId);
             break;
-        case L_BUTTON:
-            PlaySE(SE_SELECT);
-            Usm_SwitchPage(1);
-            break;
-        case R_BUTTON:
+        case SELECT_BUTTON:
             PlaySE(SE_SELECT);
             gTasks[taskId].data[0] = 0;
             gTasks[taskId].func = Task_UsmHandleMoveItems;
@@ -1059,38 +1090,36 @@ static void Task_UsmHandleMainInput(u8 taskId)
 static void Usm_HandleDPadInput(u8 input)
 {
     u8 curr = sUsmState->selectedIcon;
-    u8 last = sUsmState->visible.count - 1;
-    u8 page = sUsmState->page;
-    u8 lastPage = sUsmState->pageCount - 1;
+    u8 lastVisble = sUsmState->visible.count - 1;
+    u8 last = sUsmState->itemCount - 1;
 
     PlaySE(SE_SELECT);
 
     if (input == DPAD_RIGHT)
     {
-        if (curr == last)
+        if (curr == lastVisble)
         {
-            if (page < lastPage)
+            if (curr + sUsmState->itemOffset < last)
             {
-                Usm_SwitchPage(1);
-                Usm_SwitchSelectedIcon(0);
-                return;
+                sUsmState->itemOffset++;
+                Usm_BuildVisibleList();
+                Usm_RedrawIcons();
             }
             return;
         }
 
         Usm_SwitchSelectedIcon(Usm_GetNextIcon(1));
-        return;
     }
 
     if (input == DPAD_LEFT)
     {
         if (curr == 0)
         {
-            if (page > 0)
+            if (sUsmState->itemOffset > 0)
             {
-                Usm_SwitchPage(-1);
-                Usm_SwitchSelectedIcon(sUsmState->visible.count - 1);
-                return;
+                sUsmState->itemOffset--;
+                Usm_BuildVisibleList();
+                Usm_RedrawIcons();
             }
             return;
         }
@@ -1127,6 +1156,12 @@ static void Task_UsmRunCallbackNoFade(u8 taskId)
     }
 }
 
+
+static void Task_UsmUpdateFrameCounter(u8 taskId)
+{
+    sUsmState->frameCounter++;
+}
+
 static void Task_UsmHandleMoveItems(u8 taskId)
 {
     struct Task* task = &gTasks[taskId];
@@ -1139,13 +1174,13 @@ static void Task_UsmHandleMoveItems(u8 taskId)
     {
         case 0:
         {
-            u8 icon = sUsmState->selectedIcon;
-            u8 menu = sUsmState->page * USM_MAX_ICON_COUNT + icon;
+            u8 selectedIndex = sUsmState->selectedIcon;
+            u8 globalIndex = sUsmState->itemOffset + selectedIndex;
 
-            *grabIndex = menu;
+            *grabIndex = globalIndex;
 
             struct Sprite* sprite = Usm_GetSelectedSprite();
-            Usm_StartIconAnim(icon);
+            Usm_StartIconAnim(selectedIndex);
             sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
 
             *handSprite = Usm_CreateHandSprite(sprite->x, sprite->y - 8);
@@ -1158,7 +1193,7 @@ static void Task_UsmHandleMoveItems(u8 taskId)
         {
             u16 input = Usm_ReadKeys();
 
-            if (input == B_BUTTON || input == R_BUTTON)
+            if (input == B_BUTTON || input == SELECT_BUTTON)
             {
                 DestroySprite(&gSprites[*handSprite]);
                 FreeSpriteTilesByTag(USM_TILETAG_HAND);
@@ -1178,28 +1213,23 @@ static void Task_UsmHandleMoveItems(u8 taskId)
             if (dir != 0)
             {
                 u8 curr = sUsmState->selectedIcon;
-                u8 last = sUsmState->visible.count - 1;
-                u8 page = sUsmState->page;
-                u8 lastPage = sUsmState->pageCount - 1;
+                u8 lastVisible = sUsmState->visible.count - 1;
+                u8 last = sUsmState->itemCount - 1;
 
-                if (dir > 0 && curr == last)
+                if (dir > 0 && curr == lastVisible)
                 {
-                    if (page < lastPage)
+                    if (curr + sUsmState->itemOffset < last)
                     {
+                        sUsmState->itemOffset++;
                         Usm_MoveItem(dir);
-                        Usm_SwitchPage(1);
-                        Usm_SwitchSelectedIcon(0);
-                        Usm_StopIconAffineAnim(sUsmState->selectedIcon);
                     }
                 }
                 else if (dir < 0 && curr == 0)
                 {
-                    if (page > 0)
+                    if (sUsmState->itemOffset > 0)
                     {
+                        sUsmState->itemOffset--;
                         Usm_MoveItem(dir);
-                        Usm_SwitchPage(-1);
-                        Usm_SwitchSelectedIcon(sUsmState->visible.count - 1);
-                        Usm_StopIconAffineAnim(sUsmState->selectedIcon);
                     }
                 }
                 else
@@ -1238,7 +1268,7 @@ static void Usm_MoveItem(s8 dir)
     Usm_DestroyVisibleIcons();
     Usm_BuildVisibleList();
 
-    sUsmState->selectedIcon = newIndex % USM_MAX_ICON_COUNT;
+    sUsmState->selectedIcon = newIndex - sUsmState->itemOffset;
 
     Usm_CreateIcons(0, USM_ICON_YPOS);
     Usm_SetIconFrame(sUsmState->selectedIcon, 1);
@@ -1281,6 +1311,21 @@ static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId)
     Usm_StopIconAnim(curr);
     Usm_StartIconAnim(sUsmState->selectedIcon);
     Usm_PrintIconLabel();
+}
+
+
+static u32 Usm_CreateArrowSprite(s16 x, s16 y, bool32 flip)
+{
+    u8 spriteId = Even_CreateSpriteParametrized(
+        sUsmArrowGfx, USM_TILETAG_ARROW, sIconPal, USM_PALTAG_ICON,
+        SPRITE_SIZE(32x32), SPRITE_SHAPE(32x32), x, y, 0, Usm_SpriteCallbackArrow,
+        TRUE);
+    gSprites[spriteId].oam.priority = 0;
+    if (GetFlashLevel())
+        gSprites[spriteId].copyToObjWin = TRUE;
+    gSprites[spriteId].hFlip = flip;
+    gSprites[spriteId].invisible = TRUE;
+    return spriteId;
 }
 
 static u32 Usm_CreateHandSprite(s16 x, s16 y)
