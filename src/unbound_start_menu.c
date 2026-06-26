@@ -274,6 +274,8 @@ static u32 Usm_CreateHandSprite(s16 x, s16 y);
 static void Usm_MoveItem(s8 dir);
 static void Usm_RedrawIcons(bool32 startAffine);
 static void Usm_DestroyVisibleIcons(void);
+static void Usm_StartIconAffineAnim(u8 iconId);
+static void Usm_StopIconAffineAnim(u8 iconId);
 static void Usm_StartIconAnim(u8 iconId);
 static void Usm_StopIconAnim(u8 iconId);
 static void Usm_SaveItems(void);
@@ -905,23 +907,35 @@ static void Usm_AnimateSelectedIcon(void)
     }
 }
 
-static void Usm_StartIconAnim(u8 iconId)
+static void Usm_StartIconAffineAnim(u8 iconId)
 {
-    struct Sprite* sprite = Usm_GetIconSprite(iconId);
-    StartSpriteAnim(sprite, 1);
+    struct Sprite *sprite = Usm_GetIconSprite(iconId);
     sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
     u8 matrixNum = AllocOamMatrix();
     sprite->oam.matrixNum = matrixNum;
     StartSpriteAffineAnim(sprite, 0);
 }
 
-
-static void Usm_StopIconAnim(u8 iconId)
+static void Usm_StopIconAffineAnim(u8 iconId)
 {
     struct Sprite* sprite = Usm_GetIconSprite(iconId);
     sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
     FreeSpriteOamMatrix(sprite);
+}
+
+static void Usm_StartIconAnim(u8 iconId)
+{
+    struct Sprite* sprite = Usm_GetIconSprite(iconId);
+    StartSpriteAnim(sprite, 1);
+    Usm_StartIconAffineAnim(iconId);
+}
+
+
+static void Usm_StopIconAnim(u8 iconId)
+{
+    struct Sprite* sprite = Usm_GetIconSprite(iconId);
     StartSpriteAnim(sprite, 0);
+    Usm_StopIconAffineAnim(iconId);
 }
 
 static struct Sprite* Usm_GetIconSprite(u8 iconId)
@@ -1179,6 +1193,7 @@ static void Task_UsmHandleMoveItems(u8 taskId)
                         Usm_MoveItem(dir);
                         Usm_SwitchPage(1);
                         Usm_SwitchSelectedIcon(0);
+                        Usm_StopIconAffineAnim(sUsmState->selectedIcon);
                     }
                 }
                 else if (dir < 0 && curr == 0)
@@ -1188,6 +1203,7 @@ static void Task_UsmHandleMoveItems(u8 taskId)
                         Usm_MoveItem(dir);
                         Usm_SwitchPage(-1);
                         Usm_SwitchSelectedIcon(sUsmState->visible.count - 1);
+                        Usm_StopIconAffineAnim(sUsmState->selectedIcon);
                     }
                 }
                 else
