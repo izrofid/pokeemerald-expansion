@@ -37,6 +37,7 @@
 #include "palette.h"
 #include "party_menu.h"
 #include "pokedex.h"
+#include "pokenav.h"
 #include "rtc.h"
 #include "safari_zone.h"
 #include "save_dialog.h"
@@ -445,6 +446,15 @@ static bool8 StartMenuBagCallback(void)
 
 static bool8 StartMenuPokeNavCallback(void)
 {
+    if (!gPaletteFade.active)
+    {
+        PlayRainStoppingSoundEffect();
+        CleanupOverworldWindowsAndTilemaps();
+        SetMainCallback2(CB2_InitPokeNav);  // Display PokéNav
+
+        return TRUE;
+    }
+
     return FALSE;
 }
 
