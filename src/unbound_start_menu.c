@@ -604,7 +604,7 @@ void Usm_InitStartMenu(void)
     sUsmMemory = AllocZeroed(sizeof(struct Usm_Memory));
 
     if (sUsmMemory == NULL) {
-        SetMainCallback2(CB2_ReturnToFieldWithOpenMenu);
+        SetMainCallback2(CB2_ReturnToField);
         return;
     }
 
