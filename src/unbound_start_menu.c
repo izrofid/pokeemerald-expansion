@@ -1116,7 +1116,7 @@ static void Usm_HandleMainInput(void)
         sUsmState->move.grabIndex = sUsmState->itemOffset + sUsmState->selectedVisibleIdx;
 
         struct Sprite *sprite = Usm_GetSelectedSprite();
-        sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+        Usm_StopIconAffineAnim(sUsmState->selectedVisibleIdx);
 
         sUsmState->move.handSpriteId =
             Usm_CreateHandSprite(sprite->x, sprite->y - 8);
