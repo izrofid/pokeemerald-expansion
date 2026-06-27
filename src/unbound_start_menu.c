@@ -287,7 +287,6 @@ static void Usm_HandleDPadInput(u8 input);
 static enum Usm_Icons Usm_GetNextIcon(s8 change);
 static void BuildDateTimeString(u8* buf);
 static void Usm_BuildMenuItems(void);
-static void Usm_BuildDefaultMenuItems(void);
 static void Usm_AddMenuItem(enum Usm_Icons icon);
 static u32 Usm_CreateHandSprite(s16 x, s16 y);
 static u32 Usm_CreateArrowSprite(s16 x, s16 y, bool32 flip);
@@ -825,6 +824,47 @@ static const enum Usm_Icons sUsmDefaultItems[USM_ICO_COUNT] = {
     USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE,  USM_ICO_OPTIONS,
 };
 
+static u32 Usm_GetDefaultIndex(enum Usm_Icons item)
+{
+    for (u32 i = 0; i < ARRAY_COUNT(sUsmDefaultItems); i++)
+    {
+        if (sUsmDefaultItems[i] == item)
+            return i;
+    }
+
+    errorf("Unknown default menu item: %d", item);
+    return ARRAY_COUNT(sUsmDefaultItems);
+}
+
+static void Usm_InsertSavedItem(enum Usm_Icons item)
+{
+    struct Usm_SavedItems *saved = &gSaveBlock3Ptr->usmSaved;
+    u32 insertIndex = saved->count;
+    u32 defaultIndex = Usm_GetDefaultIndex(item);
+
+    u32 arrayCount = ARRAY_COUNT(saved->items);
+
+    assertf(saved->count < arrayCount, "Saved menu full (count=%u, capacity=%u)", saved->count, arrayCount);
+
+    for (u32 i = 0; i < saved->count; i++)
+    {
+        if (Usm_GetDefaultIndex(saved->items[i]) > defaultIndex)
+        {
+            insertIndex = i;
+            break;
+        }
+    }
+
+    AUTO to = &saved->items[insertIndex + 1];
+    AUTO from = &saved->items[insertIndex];
+    AUTO size = (saved->count - insertIndex) * sizeof(saved->items[0]);
+
+    memmove(to, from, size);
+
+    saved->items[insertIndex] = item;
+    saved->count++;
+}
+
 static void Usm_BuildMenuItems(void)
 {
     struct Usm_SavedItems* saved = &gSaveBlock3Ptr->usmSaved;
@@ -844,18 +884,17 @@ static void Usm_BuildMenuItems(void)
         }
     }
 
-    for (u32 item = 0; item < USM_ICO_COUNT; item++)
+    for (u32 i = 0; i < ARRAY_COUNT(sUsmDefaultItems); i++)
     {
-        if (!Usm_IsItemAvailable(item))
-            continue;
+        enum Usm_Icons item = sUsmDefaultItems[i];
 
-        if (!Usm_ShouldPrepend(item))
+        if (!Usm_IsItemAvailable(item))
             continue;
 
         if (Usm_ListContains(item, saved->items, saved->count))
             continue;
 
-        Usm_AddMenuItem(item);
+        Usm_InsertSavedItem(item);
     }
 
     for (u32 i = 0; i < saved->count; i++)
@@ -866,20 +905,6 @@ static void Usm_BuildMenuItems(void)
             continue;
 
         if (!Usm_IsItemAvailable(item))
-            continue;
-
-        if (Usm_ListContains(item, sUsmState->items, sUsmState->itemCount))
-            continue;
-
-        Usm_AddMenuItem(item);
-    }
-
-    for (u32 item = 0; item < USM_ICO_COUNT; item++)
-    {
-        if (!Usm_IsItemAvailable(item))
-            continue;
-
-        if (Usm_ListContains(item, sUsmState->items, sUsmState->itemCount))
             continue;
 
         Usm_AddMenuItem(item);
