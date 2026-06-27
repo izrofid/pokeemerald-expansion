@@ -91,7 +91,7 @@ enum Usm_Mode
 {
     USM_MODE_NORMAL,
     USM_MODE_MOVE,
-    USM_MODE_BUSY,
+    USM_MODE_SELECT,
 };
 
 enum Usm_Windows {
@@ -116,7 +116,8 @@ struct Usm_State {
     u8 loadState;
     u8 selectedVisibleIdx;
     u8 windowCount;
-    u16 frameCounter;
+    u8 frameCounter;
+    u8 mainTaskId;
     u8 itemOffset;
     u8 items[USM_ICO_COUNT];
     u8 itemCount;
@@ -319,12 +320,12 @@ static bool8 StartMenuDexNavCallback(void);
 
 static void Usm_HandleMainInput(void);
 static void Usm_HandleMoveInput(void);
-static void Usm_HandleBusyInput(void);
+static void Usm_HandleSelection(void);
 
 static Usm_ModeCB sUsmModeCallbacks[] = {
     [USM_MODE_NORMAL] = Usm_HandleMainInput,
     [USM_MODE_MOVE]   = Usm_HandleMoveInput,
-    [USM_MODE_BUSY]   = Usm_HandleBusyInput,
+    [USM_MODE_SELECT]   = Usm_HandleSelection,
 };
 
 static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
@@ -658,7 +659,7 @@ void Usm_InitStartMenu(void)
     Usm_AnimateSelectedIcon();
     sUsmMemory->leftArrowId = Usm_CreateArrowSprite(12, USM_ICON_YPOS, TRUE);
     sUsmMemory->rightArrowId = Usm_CreateArrowSprite(DISPLAY_WIDTH - 12, USM_ICON_YPOS, FALSE);
-    CreateTask(Task_UsmMain, 1);
+    sUsmState->mainTaskId = CreateTask(Task_UsmMain, 1);
 }
 
 
@@ -1059,8 +1060,6 @@ static void Usm_SaveItems(void)
 
 static void Usm_HandleMainInput(void)
 {
-    TaskFunc func;
-
     if (JOY_NEW(A_BUTTON))
     {
         u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
@@ -1070,12 +1069,7 @@ static void Usm_HandleMainInput(void)
         sUsmSavedIcon = sUsmState->selectedVisibleIdx;
         sUsmSavedOffset = sUsmState->itemOffset;
 
-        func = sUsmMenuItems[iconId].shouldFade
-            ? Task_UsmFadeAndRunCallback
-            : Task_UsmRunCallbackNoFade;
-
-        sUsmState->mode = USM_MODE_BUSY;
-        CreateTask(func, 1);
+        sUsmState->mode = USM_MODE_SELECT;
         return;
     }
 
@@ -1177,10 +1171,14 @@ static void Task_UsmRunCallbackNoFade(u8 taskId)
     }
 }
 
-
-static void Usm_HandleBusyInput(void)
+static void Usm_HandleSelection(void)
 {
+    u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
+    TaskFunc func = sUsmMenuItems[iconId].shouldFade
+        ? Task_UsmFadeAndRunCallback
+        : Task_UsmRunCallbackNoFade;
 
+    gTasks[sUsmState->mainTaskId].func = func;
 }
 
 static void Usm_HandleMoveInput(void)
@@ -1235,7 +1233,6 @@ static void Usm_SwapIconPos(u8 grabIndex, u8 targetIndex)
     u8 tmp = sUsmState->items[grabIndex];
     sUsmState->items[grabIndex] = sUsmState->items[targetIndex];
     sUsmState->items[targetIndex] = tmp;
-
 
     sUsmState->selectedVisibleIdx = targetIndex - sUsmState->itemOffset;
 
