@@ -662,7 +662,6 @@ void Usm_InitStartMenu(void)
     sUsmState->mainTaskId = CreateTask(Task_UsmMain, 1);
 }
 
-
 static void Task_UsmMain(u8 taskId)
 {
     sUsmState->frameCounter++;
@@ -821,6 +820,11 @@ static bool32 UNUSED Usm_ShouldPrepend(enum Usm_Icons item)
     }
 }
 
+static const enum Usm_Icons sUsmDefaultItems[USM_ICO_COUNT] = {
+    USM_ICO_DEBUG,   USM_ICO_POKEDEX, USM_ICO_PARTY, USM_ICO_BAG,
+    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE,  USM_ICO_OPTIONS,
+};
+
 static void Usm_BuildMenuItems(void)
 {
     struct Usm_SavedItems* saved = &gSaveBlock3Ptr->usmSaved;
@@ -829,8 +833,15 @@ static void Usm_BuildMenuItems(void)
 
     if (!saved->count)
     {
-        Usm_BuildDefaultMenuItems();
-        return;
+        for (u32 i = 0; i < ARRAY_COUNT(sUsmDefaultItems); i++)
+        {
+            enum Usm_Icons item = sUsmDefaultItems[i];
+
+            if (!Usm_IsItemAvailable(item))
+                continue;
+
+            saved->items[saved->count++] = item;
+        }
     }
 
     for (u32 item = 0; item < USM_ICO_COUNT; item++)
@@ -886,27 +897,6 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         default: return TRUE;
     }
 
-}
-
-static void Usm_BuildDefaultMenuItems(void)
-{
-    sUsmState->itemCount = 0;
-
-    if (FlagGet(FLAG_SYS_POKEDEX_GET))
-        Usm_AddMenuItem(USM_ICO_POKEDEX);
-
-    if (FlagGet(FLAG_SYS_POKEMON_GET))
-        Usm_AddMenuItem(USM_ICO_PARTY);
-
-    Usm_AddMenuItem(USM_ICO_BAG);
-
-    if (FlagGet(FLAG_SYS_POKENAV_GET))
-        Usm_AddMenuItem(USM_ICO_POKENAV);
-
-    Usm_AddMenuItem(USM_ICO_TRAINER);
-    Usm_AddMenuItem(USM_ICO_SAVE);
-    Usm_AddMenuItem(USM_ICO_OPTIONS);
-    Usm_AddMenuItem(USM_ICO_DEBUG);
 }
 
 static void Usm_BuildVisibleList(void)
