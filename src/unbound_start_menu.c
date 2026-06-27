@@ -271,6 +271,7 @@ static void Task_UsmRunCallbackNoFade(u8 taskId);
 static void Usm_LoadBgGfx(void);
 static void Usm_CreateIcons(s16 x, s16 y);
 static void Usm_LoadIconGfx(void);
+static enum Usm_Icons Usm_GetSelectedIconId(void);
 static struct Sprite* Usm_GetSelectedSprite(void);
 static void Usm_BuildVisibleList(void);
 static void Usm_SetupWindows();
@@ -680,7 +681,7 @@ static void Usm_PrintText(u8 winId, u8 fontId, s16 x, s16 y, const u8* color, co
 
 static void Usm_PrintIconLabel(void)
 {
-    u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
+    u8 iconId = Usm_GetSelectedIconId();
     const u8* text = sUsmMenuItems[iconId].label;
     u8 winId = sUsmMemory->windowIds[USM_WIN_NAME];
     s16 x = GetStringCenterAlignXOffset(FONT_SMALL, text, GetWindowAttribute(winId, WINDOW_WIDTH) * 8);
@@ -971,6 +972,11 @@ static void Usm_LoadIconGfx(void)
     }
 }
 
+static enum Usm_Icons Usm_GetSelectedIconId(void)
+{
+    return sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
+}
+
 static struct Sprite* Usm_GetSelectedSprite(void)
 {
     u8 selectedId = sUsmMemory->spriteIds[sUsmState->selectedVisibleIdx];
@@ -1082,7 +1088,7 @@ static void Usm_HandleMainInput(void)
 {
     if (JOY_NEW(A_BUTTON))
     {
-        u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
+        u8 iconId = Usm_GetSelectedIconId();
 
         PlaySE(SE_SELECT);
         gMenuCallback = sUsmMenuItems[iconId].callback;
@@ -1193,7 +1199,7 @@ static void Task_UsmRunCallbackNoFade(u8 taskId)
 
 static void Usm_HandleSelection(void)
 {
-    u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
+    u8 iconId = Usm_GetSelectedIconId();
     TaskFunc func = sUsmMenuItems[iconId].shouldFade
         ? Task_UsmFadeAndRunCallback
         : Task_UsmRunCallbackNoFade;
