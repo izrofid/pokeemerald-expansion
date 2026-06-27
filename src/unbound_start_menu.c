@@ -266,7 +266,6 @@ static void Usm_PrintButtonHints();
 static void Usm_AnimateSelectedIcon(void);
 static struct Sprite* Usm_GetIconSprite(u8 iconId);
 static void Usm_ExitStartMenu(void);
-static u32 Usm_ReadKeys(void);
 static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId);
 static void Usm_HandleDPadInput(u8 input);
 static enum Usm_Icons Usm_GetNextIcon(s8 change);
@@ -1025,75 +1024,42 @@ static void Usm_SaveItems(void)
         saved->items[i] = sUsmState->items[i];
 }
 
-static u32 Usm_ReadKeys(void)
-{
-    if (JOY_NEW(A_BUTTON)) {
-        return A_BUTTON;
-    }
-    if (JOY_NEW(B_BUTTON)) {
-        return B_BUTTON;
-    }
-    if (JOY_NEW(L_BUTTON)) {
-        return L_BUTTON;
-    }
-    if (JOY_NEW(R_BUTTON)) {
-        return R_BUTTON;
-    }
-    if (JOY_NEW(SELECT_BUTTON)) {
-        return SELECT_BUTTON;
-    }
-    if (JOY_NEW(DPAD_UP)) {
-        return DPAD_UP;
-    }
-    if (JOY_NEW(DPAD_DOWN)) {
-        return DPAD_DOWN;
-    }
-    if (JOY_NEW(DPAD_RIGHT)) {
-        return DPAD_RIGHT;
-    }
-    if (JOY_NEW(DPAD_LEFT)) {
-        return DPAD_LEFT;
-    }
-    else {
-        return 0;
-    }
-}
-
 static void Task_UsmHandleMainInput(u8 taskId)
 {
-    u16 input = Usm_ReadKeys();
     TaskFunc func;
-    switch (input) {
-        case A_BUTTON:
-            PlaySE(SE_SELECT);
-            u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
-            gMenuCallback = sUsmMenuItems[iconId].callback;
-            sUsmSavedIcon = sUsmState->selectedVisibleIdx;
-            sUsmSavedOffset = sUsmState->itemOffset;
-            if (sUsmMenuItems[iconId].shouldFade)
-                func = Task_UsmFadeAndRunCallback;
-            else
-                func = Task_UsmRunCallbackNoFade;
-            gTasks[taskId].func = func;
-            break;
-        case B_BUTTON:
-            PlaySE(SE_PC_OFF);
-            Usm_ExitStartMenu();
-            UnfreezeObjectEvents();
-            UnlockPlayerFieldControls();
-            DestroyTask(taskId);
-            break;
-        case SELECT_BUTTON:
-            PlaySE(SE_SELECT);
-            gTasks[taskId].data[0] = 0;
-            gTasks[taskId].func = Task_UsmHandleMoveItems;
-            break;
-        case DPAD_UP:
-        case DPAD_DOWN:
-        case DPAD_RIGHT:
-        case DPAD_LEFT:
-            Usm_HandleDPadInput(input);
-            break;
+
+    if (JOY_NEW(A_BUTTON))
+    {
+        u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
+
+        PlaySE(SE_SELECT);
+        gMenuCallback = sUsmMenuItems[iconId].callback;
+        sUsmSavedIcon = sUsmState->selectedVisibleIdx;
+        sUsmSavedOffset = sUsmState->itemOffset;
+
+        func = sUsmMenuItems[iconId].shouldFade
+            ? Task_UsmFadeAndRunCallback
+            : Task_UsmRunCallbackNoFade;
+
+        gTasks[taskId].func = func;
+    }
+    else if (JOY_NEW(B_BUTTON))
+    {
+        PlaySE(SE_PC_OFF);
+        Usm_ExitStartMenu();
+        UnfreezeObjectEvents();
+        UnlockPlayerFieldControls();
+        DestroyTask(taskId);
+    }
+    else if (JOY_NEW(SELECT_BUTTON))
+    {
+        PlaySE(SE_SELECT);
+        gTasks[taskId].data[0] = 0;
+        gTasks[taskId].func = Task_UsmHandleMoveItems;
+    }
+    else if (JOY_NEW(DPAD_ANY))
+    {
+        Usm_HandleDPadInput(JOY_NEW(DPAD_ANY));
     }
 }
 
@@ -1105,7 +1071,7 @@ static void Usm_HandleDPadInput(u8 input)
 
     PlaySE(SE_SELECT);
 
-    if (input == DPAD_RIGHT)
+    if (input & (DPAD_DOWN | DPAD_RIGHT))
     {
         if (curr == lastVisble)
         {
@@ -1121,7 +1087,7 @@ static void Usm_HandleDPadInput(u8 input)
         Usm_SwitchSelectedIcon(Usm_GetNextIcon(1));
     }
 
-    if (input == DPAD_LEFT)
+    else if (input & (DPAD_UP | DPAD_LEFT))
     {
         if (curr == 0)
         {
@@ -1201,9 +1167,7 @@ static void Task_UsmHandleMoveItems(u8 taskId)
 
         case 1:
         {
-            u16 input = Usm_ReadKeys();
-
-            if (input == B_BUTTON || input == SELECT_BUTTON)
+            if (JOY_NEW(B_BUTTON | SELECT_BUTTON))
             {
                 DestroySprite(&gSprites[*handSprite]);
                 FreeSpriteTilesByTag(USM_TILETAG_HAND);
@@ -1215,9 +1179,11 @@ static void Task_UsmHandleMoveItems(u8 taskId)
             }
 
             s8 dir = 0;
-            if (input == DPAD_LEFT || input == DPAD_UP)
+            u16 dpad = JOY_NEW(DPAD_ANY);
+
+            if (dpad & (DPAD_UP | DPAD_LEFT))
                 dir = -1;
-            else if (input == DPAD_RIGHT || input == DPAD_DOWN)
+            else if (dpad & (DPAD_DOWN | DPAD_RIGHT))
                 dir = 1;
 
             if (dir != 0)
