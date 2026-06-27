@@ -301,6 +301,7 @@ static void Usm_StopIconAnim(u8 iconId);
 static void Usm_SaveItems(void);
 static bool32 Usm_IsItemAvailable(enum Usm_Icons item);
 static bool32 IsPlayerInBattlePyramid(void);
+static void Usm_CreateScrollingArrows(void);
 
 // Menu Callbacks
 static bool8 StartMenuPokedexCallback(void);
@@ -657,8 +658,7 @@ void Usm_InitStartMenu(void)
     sUsmState->mode = USM_MODE_NORMAL;
     Usm_CreateIcons(0, USM_ICON_YPOS);
     Usm_AnimateSelectedIcon();
-    sUsmMemory->leftArrowId = Usm_CreateArrowSprite(12, USM_ICON_YPOS, TRUE);
-    sUsmMemory->rightArrowId = Usm_CreateArrowSprite(DISPLAY_WIDTH - 12, USM_ICON_YPOS, FALSE);
+    Usm_CreateScrollingArrows();
     sUsmState->mainTaskId = CreateTask(Task_UsmMain, 1);
 }
 
@@ -667,6 +667,12 @@ static void Task_UsmMain(u8 taskId)
 {
     sUsmState->frameCounter++;
     sUsmModeCallbacks[sUsmState->mode]();
+}
+
+static void Usm_CreateScrollingArrows(void)
+{
+    sUsmMemory->leftArrowId = Usm_CreateArrowSprite(12, USM_ICON_YPOS, TRUE);
+    sUsmMemory->rightArrowId = Usm_CreateArrowSprite(DISPLAY_WIDTH - 12, USM_ICON_YPOS, FALSE);
 }
 
 static void Usm_PrintText(u8 winId, u8 fontId, s16 x, s16 y, const u8* color, const u8* str)
