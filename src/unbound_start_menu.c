@@ -993,7 +993,6 @@ static void Usm_StartIconAffineAnim(u8 iconId)
 static void Usm_StopIconAffineAnim(u8 iconId)
 {
     struct Sprite* sprite = Usm_GetIconSprite(iconId);
-    sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
     FreeSpriteOamMatrix(sprite);
 }
 
