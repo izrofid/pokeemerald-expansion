@@ -293,10 +293,10 @@ static u32 Usm_CreateArrowSprite(s16 x, s16 y, bool32 flip);
 static void Usm_SwapIconPos(u8 grabIndex, u8 targetIndex);
 static void Usm_RedrawIcons();
 static void Usm_DestroyVisibleIcons(void);
-static void Usm_SetIconFrame(u8 iconId, enum Usm_Activation activation);
-static void Usm_StartIconAffineAnim(u8 iconId);
-static void Usm_StopIconAffineAnim(u8 iconId);
-static void Usm_StopIconAnim(u8 iconId);
+static void Usm_SetIconFrame(u8 visibleIndex, enum Usm_Activation activation);
+static void Usm_StartIconAffineAnim(u8 visibleIndex);
+static void Usm_StopIconAffineAnim(u8 visibleIndex);
+static void Usm_StopIconAnim(u8 visibleIndex);
 static void Usm_SaveItems(void);
 static bool32 Usm_IsItemAvailable(enum Usm_Icons item);
 static bool32 IsPlayerInBattlePyramid(void);
@@ -996,31 +996,31 @@ static void Usm_AnimateSelectedIcon(void)
     }
 }
 
-static void Usm_StartIconAffineAnim(u8 iconId)
+static void Usm_StartIconAffineAnim(u8 visibleIndex)
 {
-    struct Sprite *sprite = Usm_GetIconSprite(iconId);
+    struct Sprite *sprite = Usm_GetIconSprite(visibleIndex);
     sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
     u8 matrixNum = AllocOamMatrix();
     sprite->oam.matrixNum = matrixNum;
     StartSpriteAffineAnim(sprite, 0);
 }
 
-static void Usm_StopIconAffineAnim(u8 iconId)
+static void Usm_StopIconAffineAnim(u8 visibleIndex)
 {
-    struct Sprite* sprite = Usm_GetIconSprite(iconId);
+    struct Sprite* sprite = Usm_GetIconSprite(visibleIndex);
     FreeSpriteOamMatrix(sprite);
 }
 
-static void Usm_SetIconFrame(u8 iconId, enum Usm_Activation activation)
+static void Usm_SetIconFrame(u8 visibleIndex, enum Usm_Activation activation)
 {
-    struct Sprite* sprite = Usm_GetIconSprite(iconId);
+    struct Sprite* sprite = Usm_GetIconSprite(visibleIndex);
     StartSpriteAnim(sprite, activation);
 }
 
-static void Usm_StopIconAnim(u8 iconId)
+static void Usm_StopIconAnim(u8 visibleIndex)
 {
-    Usm_SetIconFrame(iconId, USM_INACTIVE);
-    Usm_StopIconAffineAnim(iconId);
+    Usm_SetIconFrame(visibleIndex, USM_INACTIVE);
+    Usm_StopIconAffineAnim(visibleIndex);
 }
 
 static struct Sprite* Usm_GetIconSprite(u8 iconId)
