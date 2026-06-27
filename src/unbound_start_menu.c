@@ -99,7 +99,7 @@ struct Usm_VisibleIcons {
 struct Usm_State {
     MainCallback savedCb;
     u8 loadState;
-    u8 selectedIcon;
+    u8 selectedVisibleIdx;
     u8 windowCount;
     u16 frameCounter;
     u8 itemOffset;
@@ -617,7 +617,7 @@ void Usm_InitStartMenu(void)
     sUsmState = &sUsmMemory->state;
 
     sUsmState->itemOffset = sUsmSavedOffset;
-    sUsmState->selectedIcon = sUsmSavedIcon;
+    sUsmState->selectedVisibleIdx = sUsmSavedIcon;
     sUsmSavedOffset = 0;
     sUsmSavedIcon = 0;
     Usm_BuildMenuItems();
@@ -633,7 +633,7 @@ void Usm_InitStartMenu(void)
     Usm_CreateIcons(0, USM_ICON_YPOS);
     sUsmMemory->leftArrowId = Usm_CreateArrowSprite(12, USM_ICON_YPOS, TRUE);
     sUsmMemory->rightArrowId = Usm_CreateArrowSprite(DISPLAY_WIDTH - 12, USM_ICON_YPOS, FALSE);
-    Usm_StartIconAnim(sUsmState->selectedIcon);
+    Usm_StartIconAnim(sUsmState->selectedVisibleIdx);
     CreateTask(Task_UsmHandleMainInput, 1);
     CreateTask(Task_UsmUpdateFrameCounter, 0);
 }
@@ -645,7 +645,7 @@ static void Usm_PrintText(u8 winId, u8 fontId, s16 x, s16 y, const u8* color, co
 
 static void Usm_PrintIconLabel(void)
 {
-    u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedIcon];
+    u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
     const u8* text = sUsmMenuItems[iconId].label;
     u8 winId = sUsmMemory->windowIds[USM_WIN_NAME];
     s16 x = GetStringCenterAlignXOffset(FONT_SMALL, text, GetWindowAttribute(winId, WINDOW_WIDTH) * 8);
@@ -921,7 +921,7 @@ static void Usm_LoadIconGfx(void)
 
 static struct Sprite* Usm_GetSelectedSprite(void)
 {
-    u8 selectedId = sUsmMemory->spriteIds[sUsmState->selectedIcon];
+    u8 selectedId = sUsmMemory->spriteIds[sUsmState->selectedVisibleIdx];
     struct Sprite* sprite = &gSprites[selectedId];
     return sprite;
 }
@@ -929,7 +929,7 @@ static struct Sprite* Usm_GetSelectedSprite(void)
 static void Usm_AnimateSelectedIcon(void)
 {
     for (u32 i = 0; i < sUsmState->visible.count; i++) {
-        if (i != sUsmState->selectedIcon)
+        if (i != sUsmState->selectedVisibleIdx)
             Usm_StopIconAnim(i);
         else
             Usm_StartIconAnim(i);
@@ -1066,9 +1066,9 @@ static void Task_UsmHandleMainInput(u8 taskId)
     switch (input) {
         case A_BUTTON:
             PlaySE(SE_SELECT);
-            u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedIcon];
+            u8 iconId = sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
             gMenuCallback = sUsmMenuItems[iconId].callback;
-            sUsmSavedIcon = sUsmState->selectedIcon;
+            sUsmSavedIcon = sUsmState->selectedVisibleIdx;
             sUsmSavedOffset = sUsmState->itemOffset;
             if (sUsmMenuItems[iconId].shouldFade)
                 func = Task_UsmFadeAndRunCallback;
@@ -1099,7 +1099,7 @@ static void Task_UsmHandleMainInput(u8 taskId)
 
 static void Usm_HandleDPadInput(u8 input)
 {
-    u8 curr = sUsmState->selectedIcon;
+    u8 curr = sUsmState->selectedVisibleIdx;
     u8 lastVisble = sUsmState->visible.count - 1;
     u8 last = sUsmState->itemCount - 1;
 
@@ -1186,7 +1186,7 @@ static void Task_UsmHandleMoveItems(u8 taskId)
     {
         case 0:
         {
-            u8 selectedIndex = sUsmState->selectedIcon;
+            u8 selectedIndex = sUsmState->selectedVisibleIdx;
             u8 globalIndex = sUsmState->itemOffset + selectedIndex;
 
             *grabIndex = globalIndex;
@@ -1211,7 +1211,7 @@ static void Task_UsmHandleMoveItems(u8 taskId)
                 FreeSpriteTilesByTag(USM_TILETAG_HAND);
                 Usm_DestroyVisibleIcons();
                 Usm_CreateIcons(0, USM_ICON_YPOS);
-                Usm_StartIconAnim(sUsmState->selectedIcon);
+                Usm_StartIconAnim(sUsmState->selectedVisibleIdx);
                 task->func = Task_UsmHandleMainInput;
                 return;
             }
@@ -1224,7 +1224,7 @@ static void Task_UsmHandleMoveItems(u8 taskId)
 
             if (dir != 0)
             {
-                u8 curr = sUsmState->selectedIcon;
+                u8 curr = sUsmState->selectedVisibleIdx;
                 u8 lastVisible = sUsmState->visible.count - 1;
                 u8 last = sUsmState->itemCount - 1;
 
@@ -1280,10 +1280,10 @@ static void Usm_MoveItem(s8 dir)
     Usm_DestroyVisibleIcons();
     Usm_BuildVisibleList();
 
-    sUsmState->selectedIcon = newIndex - sUsmState->itemOffset;
+    sUsmState->selectedVisibleIdx = newIndex - sUsmState->itemOffset;
 
     Usm_CreateIcons(0, USM_ICON_YPOS);
-    Usm_SetIconFrame(sUsmState->selectedIcon, 1);
+    Usm_SetIconFrame(sUsmState->selectedVisibleIdx, 1);
     Usm_PrintIconLabel();
 }
 
@@ -1306,7 +1306,7 @@ static void Usm_DestroyVisibleIcons(void)
 static enum Usm_Icons Usm_GetNextIcon(s8 change)
 {
     u8 count = sUsmState->visible.count;
-    s8 val = sUsmState->selectedIcon + change;
+    s8 val = sUsmState->selectedVisibleIdx + change;
     if (val >= count)
     {
         val = 0;
@@ -1318,10 +1318,10 @@ static enum Usm_Icons Usm_GetNextIcon(s8 change)
 
 static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId)
 {
-    u8 curr = sUsmState->selectedIcon;
-    sUsmState->selectedIcon = iconId;
+    u8 curr = sUsmState->selectedVisibleIdx;
+    sUsmState->selectedVisibleIdx = iconId;
     Usm_StopIconAnim(curr);
-    Usm_StartIconAnim(sUsmState->selectedIcon);
+    Usm_StartIconAnim(sUsmState->selectedVisibleIdx);
     Usm_PrintIconLabel();
 }
 
