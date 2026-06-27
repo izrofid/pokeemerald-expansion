@@ -55,7 +55,8 @@
 #include <string.h>
 #include <sys/cdefs.h>
 
-typedef bool8 (*Usm_MenuCB)(void) ;
+typedef bool8 (*Usm_MenuCB)(void);
+typedef void (*Usm_ModeCB)(void);
 
 #define USM_MAX_ICON_COUNT 6
 #define USM_ICON_WIDTH 32
@@ -85,6 +86,14 @@ enum Usm_Activation {
     USM_ACTIVE,
 };
 
+
+enum Usm_Mode
+{
+    USM_MODE_NORMAL,
+    USM_MODE_MOVE,
+    USM_MODE_BUSY,
+};
+
 enum Usm_Windows {
     USM_WIN_NAME,
     USM_WIN_CLOCK,
@@ -96,6 +105,12 @@ struct Usm_VisibleIcons {
     u8 count;
 };
 
+struct Usm_MoveState
+{
+    u8 grabIndex;
+    u8 handSpriteId;
+};
+
 struct Usm_State {
     MainCallback savedCb;
     u8 loadState;
@@ -105,6 +120,8 @@ struct Usm_State {
     u8 itemOffset;
     u8 items[USM_ICO_COUNT];
     u8 itemCount;
+    enum Usm_Mode mode;
+    struct Usm_MoveState move;
     struct Usm_VisibleIcons visible;
 };
 
@@ -245,11 +262,9 @@ static EWRAM_DATA u8 sUsmSavedIcon = 0;
 static EWRAM_DATA u8 sUsmSavedOffset = 0;
 
 // Tasks
-static void Task_UsmHandleMainInput(u8 taskId);
-static void Task_UsmHandleMoveItems(u8 taskId);
+static void Task_UsmMain(u8 taskId);
 static void Task_UsmFadeAndRunCallback(u8 taskId);
 static void Task_UsmRunCallbackNoFade(u8 taskId);
-static void Task_UsmUpdateFrameCounter(u8 taskId);
 
 // Static Functions
 static void Usm_LoadBgGfx(void);
@@ -275,13 +290,12 @@ static void Usm_BuildDefaultMenuItems(void);
 static void Usm_AddMenuItem(enum Usm_Icons icon);
 static u32 Usm_CreateHandSprite(s16 x, s16 y);
 static u32 Usm_CreateArrowSprite(s16 x, s16 y, bool32 flip);
-static void Usm_MoveItem(s8 dir);
+static void Usm_SwapIconPos(u8 grabIndex, u8 targetIndex);
 static void Usm_RedrawIcons();
 static void Usm_DestroyVisibleIcons(void);
 static void Usm_SetIconFrame(u8 iconId, enum Usm_Activation activation);
 static void Usm_StartIconAffineAnim(u8 iconId);
 static void Usm_StopIconAffineAnim(u8 iconId);
-static void Usm_StartIconAnim(u8 iconId);
 static void Usm_StopIconAnim(u8 iconId);
 static void Usm_SaveItems(void);
 static bool32 Usm_IsItemAvailable(enum Usm_Icons item);
@@ -302,6 +316,16 @@ static bool8 StartMenuBattlePyramidRetireCallback(void);
 static bool8 StartMenuBattlePyramidBagCallback(void);
 static bool8 StartMenuDebugCallback(void);
 static bool8 StartMenuDexNavCallback(void);
+
+static void Usm_HandleMainInput(void);
+static void Usm_HandleMoveInput(void);
+static void Usm_HandleBusyInput(void);
+
+static Usm_ModeCB sUsmModeCallbacks[] = {
+    [USM_MODE_NORMAL] = Usm_HandleMainInput,
+    [USM_MODE_MOVE]   = Usm_HandleMoveInput,
+    [USM_MODE_BUSY]   = Usm_HandleBusyInput,
+};
 
 static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
     [USM_ICO_POKEDEX] =
@@ -629,12 +653,19 @@ void Usm_InitStartMenu(void)
     Usm_PrintIconLabel();
     Usm_LoadIconGfx();
     Usm_LoadIconPalette();
+    sUsmState->mode = USM_MODE_NORMAL;
     Usm_CreateIcons(0, USM_ICON_YPOS);
+    Usm_AnimateSelectedIcon();
     sUsmMemory->leftArrowId = Usm_CreateArrowSprite(12, USM_ICON_YPOS, TRUE);
     sUsmMemory->rightArrowId = Usm_CreateArrowSprite(DISPLAY_WIDTH - 12, USM_ICON_YPOS, FALSE);
-    Usm_StartIconAnim(sUsmState->selectedVisibleIdx);
-    CreateTask(Task_UsmHandleMainInput, 1);
-    CreateTask(Task_UsmUpdateFrameCounter, 0);
+    CreateTask(Task_UsmMain, 1);
+}
+
+
+static void Task_UsmMain(u8 taskId)
+{
+    sUsmState->frameCounter++;
+    sUsmModeCallbacks[sUsmState->mode]();
 }
 
 static void Usm_PrintText(u8 winId, u8 fontId, s16 x, s16 y, const u8* color, const u8* str)
@@ -927,11 +958,19 @@ static struct Sprite* Usm_GetSelectedSprite(void)
 
 static void Usm_AnimateSelectedIcon(void)
 {
-    for (u32 i = 0; i < sUsmState->visible.count; i++) {
+    for (u32 i = 0; i < sUsmState->visible.count; i++)
+    {
         if (i != sUsmState->selectedVisibleIdx)
+        {
             Usm_StopIconAnim(i);
+        }
         else
-            Usm_StartIconAnim(i);
+        {
+            Usm_SetIconFrame(i, USM_ACTIVE);
+
+            if (sUsmState->mode == USM_MODE_NORMAL)
+                Usm_StartIconAffineAnim(i);
+        }
     }
 }
 
@@ -955,12 +994,6 @@ static void Usm_SetIconFrame(u8 iconId, enum Usm_Activation activation)
 {
     struct Sprite* sprite = Usm_GetIconSprite(iconId);
     StartSpriteAnim(sprite, activation);
-}
-
-static void Usm_StartIconAnim(u8 iconId)
-{
-    Usm_SetIconFrame(iconId, USM_ACTIVE);
-    Usm_StartIconAffineAnim(iconId);
 }
 
 static void Usm_StopIconAnim(u8 iconId)
@@ -1000,7 +1033,7 @@ static void Usm_ExitStartMenu(void)
     DestroySprite(&gSprites[sUsmMemory->rightArrowId]);
     FreeSpriteTilesByTag(USM_TILETAG_ARROW);
 
-    DestroyTask(FindTaskIdByFunc(Task_UsmUpdateFrameCounter));
+    DestroyTask(FindTaskIdByFunc(Task_UsmMain));
 
     CpuFastFill(0, buf, BG_SCREEN_SIZE);
     CpuFastFill(0, (void*)BG_CHAR_ADDR(2), BG_CHAR_SIZE);
@@ -1024,7 +1057,7 @@ static void Usm_SaveItems(void)
         saved->items[i] = sUsmState->items[i];
 }
 
-static void Task_UsmHandleMainInput(u8 taskId)
+static void Usm_HandleMainInput(void)
 {
     TaskFunc func;
 
@@ -1041,26 +1074,38 @@ static void Task_UsmHandleMainInput(u8 taskId)
             ? Task_UsmFadeAndRunCallback
             : Task_UsmRunCallbackNoFade;
 
-        gTasks[taskId].func = func;
+        sUsmState->mode = USM_MODE_BUSY;
+        CreateTask(func, 1);
+        return;
     }
-    else if (JOY_NEW(B_BUTTON))
+
+    if (JOY_NEW(B_BUTTON))
     {
         PlaySE(SE_PC_OFF);
         Usm_ExitStartMenu();
         UnfreezeObjectEvents();
         UnlockPlayerFieldControls();
-        DestroyTask(taskId);
+        return;
     }
-    else if (JOY_NEW(SELECT_BUTTON))
+
+    if (JOY_NEW(SELECT_BUTTON))
     {
         PlaySE(SE_SELECT);
-        gTasks[taskId].data[0] = 0;
-        gTasks[taskId].func = Task_UsmHandleMoveItems;
+
+        sUsmState->mode = USM_MODE_MOVE;
+        sUsmState->move.grabIndex = sUsmState->itemOffset + sUsmState->selectedVisibleIdx;
+
+        struct Sprite *sprite = Usm_GetSelectedSprite();
+        sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+
+        sUsmState->move.handSpriteId =
+            Usm_CreateHandSprite(sprite->x, sprite->y - 8);
+
+        return;
     }
-    else if (JOY_NEW(DPAD_ANY))
-    {
+
+    if (JOY_NEW(DPAD_ANY))
         Usm_HandleDPadInput(JOY_NEW(DPAD_ANY));
-    }
 }
 
 static void Usm_HandleDPadInput(u8 input)
@@ -1133,121 +1178,68 @@ static void Task_UsmRunCallbackNoFade(u8 taskId)
 }
 
 
-static void Task_UsmUpdateFrameCounter(u8 taskId)
+static void Usm_HandleBusyInput(void)
 {
-    sUsmState->frameCounter++;
+
 }
 
-static void Task_UsmHandleMoveItems(u8 taskId)
+static void Usm_HandleMoveInput(void)
 {
-    struct Task* task = &gTasks[taskId];
-
-    s16* state      = &task->data[0];
-    s16* grabIndex  = &task->data[1];
-    s16* handSprite = &task->data[2];
-
-    switch (*state)
+    if (JOY_NEW(B_BUTTON | SELECT_BUTTON))
     {
-        case 0:
+        DestroySprite(&gSprites[sUsmState->move.handSpriteId]);
+        FreeSpriteTilesByTag(USM_TILETAG_HAND);
+
+        sUsmState->mode = USM_MODE_NORMAL;
+
+        Usm_RedrawIcons();
+        return;
+    }
+
+    s8 dir = 0;
+    u16 dpad = JOY_NEW(DPAD_ANY);
+
+    if (dpad & (DPAD_UP | DPAD_LEFT))
+        dir = -1;
+    else if (dpad & (DPAD_DOWN | DPAD_RIGHT))
+        dir = 1;
+
+    if (dir != 0)
+    {
+        s16 targetIndex = sUsmState->move.grabIndex + dir;
+
+        if (targetIndex >= 0 && targetIndex < sUsmState->itemCount)
         {
-            u8 selectedIndex = sUsmState->selectedVisibleIdx;
-            u8 globalIndex = sUsmState->itemOffset + selectedIndex;
+            u8 curr = sUsmState->selectedVisibleIdx;
+            u8 lastVisible = sUsmState->visible.count - 1;
 
-            *grabIndex = globalIndex;
+            if (dir > 0 && curr == lastVisible)
+                sUsmState->itemOffset++;
+            else if (dir < 0 && curr == 0)
+                sUsmState->itemOffset--;
 
-            struct Sprite* sprite = Usm_GetSelectedSprite();
-            Usm_StartIconAnim(selectedIndex);
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
-
-            *handSprite = Usm_CreateHandSprite(sprite->x, sprite->y - 8);
-
-            (*state)++;
-            break;
-        }
-
-        case 1:
-        {
-            if (JOY_NEW(B_BUTTON | SELECT_BUTTON))
-            {
-                DestroySprite(&gSprites[*handSprite]);
-                FreeSpriteTilesByTag(USM_TILETAG_HAND);
-                Usm_DestroyVisibleIcons();
-                Usm_CreateIcons(0, USM_ICON_YPOS);
-                Usm_StartIconAnim(sUsmState->selectedVisibleIdx);
-                task->func = Task_UsmHandleMainInput;
-                return;
-            }
-
-            s8 dir = 0;
-            u16 dpad = JOY_NEW(DPAD_ANY);
-
-            if (dpad & (DPAD_UP | DPAD_LEFT))
-                dir = -1;
-            else if (dpad & (DPAD_DOWN | DPAD_RIGHT))
-                dir = 1;
-
-            if (dir != 0)
-            {
-                u8 curr = sUsmState->selectedVisibleIdx;
-                u8 lastVisible = sUsmState->visible.count - 1;
-                u8 last = sUsmState->itemCount - 1;
-
-                if (dir > 0 && curr == lastVisible)
-                {
-                    if (curr + sUsmState->itemOffset < last)
-                    {
-                        sUsmState->itemOffset++;
-                        Usm_MoveItem(dir);
-                    }
-                }
-                else if (dir < 0 && curr == 0)
-                {
-                    if (sUsmState->itemOffset > 0)
-                    {
-                        sUsmState->itemOffset--;
-                        Usm_MoveItem(dir);
-                    }
-                }
-                else
-                {
-                    Usm_MoveItem(dir);
-                }
-            }
-
-            struct Sprite* hand = &gSprites[*handSprite];
-            struct Sprite* target = Usm_GetSelectedSprite();
-
-            hand->x = target->x;
-            hand->y = target->y - 8;
-
-            break;
+            Usm_SwapIconPos(sUsmState->move.grabIndex, targetIndex);
+            sUsmState->move.grabIndex = targetIndex;
         }
     }
+
+    struct Sprite *hand = &gSprites[sUsmState->move.handSpriteId];
+    struct Sprite *target = Usm_GetSelectedSprite();
+
+    hand->x = target->x;
+    hand->y = target->y - 8;
 }
 
-static void Usm_MoveItem(s8 dir)
+static void Usm_SwapIconPos(u8 grabIndex, u8 targetIndex)
 {
-    struct Task* task = &gTasks[FindTaskIdByFunc(Task_UsmHandleMoveItems)];
-    s16* grabIndex = &task->data[1];
+    u8 tmp = sUsmState->items[grabIndex];
+    sUsmState->items[grabIndex] = sUsmState->items[targetIndex];
+    sUsmState->items[targetIndex] = tmp;
 
-    s16 newIndex = *grabIndex + dir;
 
-    if (newIndex < 0 || newIndex >= sUsmState->itemCount)
-        return;
+    sUsmState->selectedVisibleIdx = targetIndex - sUsmState->itemOffset;
 
-    u8 tmp = sUsmState->items[*grabIndex];
-    sUsmState->items[*grabIndex] = sUsmState->items[newIndex];
-    sUsmState->items[newIndex] = tmp;
-
-    *grabIndex = newIndex;
-
-    Usm_DestroyVisibleIcons();
-    Usm_BuildVisibleList();
-
-    sUsmState->selectedVisibleIdx = newIndex - sUsmState->itemOffset;
-
-    Usm_CreateIcons(0, USM_ICON_YPOS);
-    Usm_SetIconFrame(sUsmState->selectedVisibleIdx, 1);
+    Usm_RedrawIcons();
     Usm_PrintIconLabel();
 }
 
@@ -1283,10 +1275,8 @@ static enum Usm_Icons Usm_GetNextIcon(s8 change)
 
 static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId)
 {
-    u8 curr = sUsmState->selectedVisibleIdx;
     sUsmState->selectedVisibleIdx = iconId;
-    Usm_StopIconAnim(curr);
-    Usm_StartIconAnim(sUsmState->selectedVisibleIdx);
+    Usm_AnimateSelectedIcon();
     Usm_PrintIconLabel();
 }
 
