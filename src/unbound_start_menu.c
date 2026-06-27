@@ -1112,7 +1112,6 @@ static void Usm_HandleDPadInput(u8 input)
             if (curr + sUsmState->itemOffset < last)
             {
                 sUsmState->itemOffset++;
-                Usm_BuildVisibleList();
                 Usm_RedrawIcons();
                 Usm_PrintIconLabel();
             }
@@ -1129,7 +1128,6 @@ static void Usm_HandleDPadInput(u8 input)
             if (sUsmState->itemOffset > 0)
             {
                 sUsmState->itemOffset--;
-                Usm_BuildVisibleList();
                 Usm_RedrawIcons();
                 Usm_PrintIconLabel();
             }
@@ -1289,6 +1287,7 @@ static void Usm_MoveItem(s8 dir)
 
 static void Usm_RedrawIcons()
 {
+    Usm_BuildVisibleList();
     Usm_DestroyVisibleIcons();
     Usm_CreateIcons(0, USM_ICON_YPOS);
     Usm_AnimateSelectedIcon();
