@@ -3023,3 +3023,8 @@
 	getbraillestringwidth \text
 	call EventScript_BrailleCursorWaitButton
 	.endm
+
+  @@ Unbound Start Menu
+  .macro initusm
+  callnative Usm_InitStartMenu
+  .endm

@@ -408,7 +408,7 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
             .template = &sSpriteTemplate_Retire,
             .sheet = &sSpriteSheet_Retire,
             .label = COMPOUND_STRING("Retire"),
-            .shouldFade = TRUE,
+            .shouldFade = FALSE,
             .callback = StartMenuSafariZoneRetireCallback,
         },
     [USM_ICO_FRONTIER_RETIRE] =
@@ -537,10 +537,14 @@ static bool8 UNUSED StartMenuExitCallback(void)
     return TRUE;
 }
 
+extern const u8 SafariZone_EventScript_RetirePrompt[];
 static bool8 StartMenuSafariZoneRetireCallback(void)
 {
-    SafariZoneRetirePrompt();
-    return TRUE;
+    if (!gPaletteFade.active)
+    {
+        ScriptContext_SetupScript(SafariZone_EventScript_RetirePrompt);
+    }
+    return FALSE;
 }
 
 static bool8 StartMenuLinkModePlayerNameCallback(void)
@@ -820,9 +824,9 @@ static bool32 UNUSED Usm_ShouldPrepend(enum Usm_Icons item)
     }
 }
 
-static const enum Usm_Icons sUsmDefaultItems[USM_ICO_COUNT] = {
+static const enum Usm_Icons sUsmDefaultItems[] = {
     USM_ICO_DEBUG,   USM_ICO_POKEDEX, USM_ICO_PARTY, USM_ICO_BAG,
-    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE,  USM_ICO_OPTIONS,
+    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE,  USM_ICO_OPTIONS, USM_ICO_SAFARI_RETIRE
 };
 
 static u32 Usm_GetDefaultIndex(enum Usm_Icons item)
@@ -919,7 +923,8 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         case USM_ICO_PARTY: return FlagGet(FLAG_SYS_POKEMON_GET);
         case USM_ICO_POKENAV: return FlagGet(FLAG_SYS_POKENAV_GET);
         case USM_ICO_FRONTIER_RETIRE: return IsPlayerInBattlePyramid();
-        case USM_ICO_SAFARI_RETIRE: return FALSE;
+        case USM_ICO_SAVE: return !GetSafariZoneFlag();
+        case USM_ICO_SAFARI_RETIRE: return GetSafariZoneFlag();
         default: return TRUE;
     }
 

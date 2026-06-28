@@ -32,6 +32,7 @@ SafariZone_EventScript_RetirePrompt::
 	msgbox SafariZone_Text_WouldYouLikeToExit, MSGBOX_YESNO
 	goto_if_eq VAR_RESULT, YES, SafariZone_EventScript_Retire
 	releaseall
+  initusm
 	end
 
 SafariZone_EventScript_Retire::
