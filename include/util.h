@@ -5,6 +5,13 @@
 
 #define HP_EMPTY 0
 
+#define Swap(a, b)            \
+    do {                      \
+        __auto_type _tmp = a; \
+        a = b;                \
+        b = _tmp;             \
+    } while (0)
+
 extern const u8 gMiscBlank_Gfx[]; // unused in Emerald
 
 u8 CreateInvisibleSpriteWithCallback(void (*callback)(struct Sprite *));

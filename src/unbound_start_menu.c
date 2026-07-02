@@ -1261,12 +1261,8 @@ static void Usm_HandleMoveInput(void)
 
 static void Usm_SwapIconPos(u8 grabIndex, u8 targetIndex)
 {
-    u8 tmp = sUsmState->items[grabIndex];
-    sUsmState->items[grabIndex] = sUsmState->items[targetIndex];
-    sUsmState->items[targetIndex] = tmp;
-
+    Swap(sUsmState->items[grabIndex], sUsmState->items[targetIndex]);
     sUsmState->selectedVisibleIdx = targetIndex - sUsmState->itemOffset;
-
     Usm_RedrawIcons();
     Usm_PrintIconLabel();
 }
