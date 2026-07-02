@@ -922,7 +922,7 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         case USM_ICO_PARTY: return FlagGet(FLAG_SYS_POKEMON_GET);
         case USM_ICO_POKENAV: return FlagGet(FLAG_SYS_POKENAV_GET);
         case USM_ICO_FRONTIER_RETIRE: return IsPlayerInBattlePyramid();
-        case USM_ICO_SAVE: return !GetSafariZoneFlag();
+        case USM_ICO_SAVE: return !GetSafariZoneFlag() && !IsPlayerInBattlePyramid();
         case USM_ICO_SAFARI_RETIRE: return GetSafariZoneFlag();
         default: return TRUE;
     }
