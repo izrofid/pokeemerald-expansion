@@ -99,6 +99,7 @@ enum Usm_Windows {
     USM_WIN_NAME,
     USM_WIN_CLOCK,
     USM_WIN_HINTS,
+    USM_WIN_SAFARI,
     USM_WIN_COUNT,
 };
 struct Usm_VisibleIcons {
@@ -159,6 +160,9 @@ static const u32 sRetireIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/spri
 static const u32 sUsmHandGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/hand.4bpp.smol");
 static const u32 sUsmArrowGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/arrow.4bpp.smol");
 
+static const u8 sUsmStepGfx[] = INCBIN_U8("graphics/unbound_start_menu/step.4bpp");
+static const u8 sUsmBallGfx[] = INCBIN_U8("graphics/unbound_start_menu/ball.4bpp");
+
 static const u16 sIconPal[] = INCBIN_U16("graphics/unbound_start_menu/sprites/icons.gbapal");
 
 static const u32 sUsmBgTiles[] = INCBIN_U32("graphics/unbound_start_menu/bg/tiles.4bpp.smol");
@@ -176,7 +180,9 @@ static const struct WindowTemplate sUsmWindowTemplates[] = {
     [USM_WIN_CLOCK] =
         {.bg = 0, .tilemapLeft = 19, .tilemapTop = 11, .width = 11, .height = 2, .paletteNum = 14, .baseBlock = 62},
     [USM_WIN_HINTS] =
-        {.bg = 0, .tilemapLeft = 10, .tilemapTop = 18, .width = 20, .height = 2, .paletteNum = 14, .baseBlock = 84},
+        {.bg = 0, .tilemapLeft = 0, .tilemapTop = 18, .width = 8, .height = 2, .paletteNum = 14, .baseBlock = 84},
+    [USM_WIN_SAFARI] =
+        {.bg = 0, .tilemapLeft = 24, .tilemapTop = 18, .width = 6, .height = 2, .paletteNum = 14, .baseBlock = 124},
     DUMMY_WIN_TEMPLATE};
 
 
@@ -273,6 +279,7 @@ static void Task_UsmRunCallbackNoFade(u8 taskId);
 static void Usm_LoadBgGfx(void);
 static void Usm_CreateIcons(s16 x, s16 y);
 static void Usm_LoadIconGfx(void);
+static void Usm_ShowSafariText(void);
 static enum Usm_Icons Usm_GetSelectedIconId(void);
 static struct Sprite* Usm_GetSelectedSprite(void);
 static void Usm_BuildVisibleList(void);
@@ -621,6 +628,8 @@ static void Usm_SpriteCallbackArrow(struct Sprite *sprite)
     sprite->invisible = !show;
 }
 
+
+
 void Usm_InitStartMenu(void)
 {
     if (!IsOverworldLinkActive()) {
@@ -663,7 +672,28 @@ void Usm_InitStartMenu(void)
     Usm_CreateIcons(0, USM_ICON_YPOS);
     Usm_AnimateSelectedIcon();
     Usm_CreateScrollingArrows();
+    Usm_ShowSafariText();
     sUsmState->mainTaskId = CreateTask(Task_UsmMain, 1);
+}
+
+static void Usm_ShowSafariText(void)
+{
+    if (!GetSafariZoneFlag())
+        return;
+
+    u8 winId = sUsmMemory->windowIds[USM_WIN_SAFARI];
+    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_SAFARI)));
+
+    BlitBitmapToWindow(winId, sUsmStepGfx, 2, 5, 8, 8);
+    ConvertIntToDecimalStringN(gStringVar1, gSafariZoneStepCounter, STR_CONV_MODE_LEFT_ALIGN, 3);
+    Usm_PrintText(winId, FONT_SMALL, 10, 1, sUsmWinFontColors[FONT_WHITE], gStringVar1);
+
+    u32 len = GetStringWidth(FONT_SMALL, gStringVar1, 0) + 12;
+
+    BlitBitmapToWindow(winId, sUsmBallGfx, len, 5, 8, 8);
+    ConvertIntToDecimalStringN(gStringVar2, gNumSafariBalls, STR_CONV_MODE_LEFT_ALIGN, 2);
+    Usm_PrintText(winId, FONT_SMALL, len + 8, 1, sUsmWinFontColors[FONT_WHITE], gStringVar2);
+    CopyWindowToVram(winId, COPYWIN_FULL);
 }
 
 static void Task_UsmMain(u8 taskId)
@@ -713,7 +743,7 @@ static void Usm_PrintButtonHints()
 {
     u8 winId = sUsmMemory->windowIds[USM_WIN_HINTS];
     const u8* text = COMPOUND_STRING("{SELECT_BUTTON} Move");
-    s16 x = GetStringRightAlignXOffset(FONT_SMALL_NARROWER, text, GetWindowAttribute(winId, WINDOW_WIDTH) * 8);
+    s16 x = GetStringCenterAlignXOffset(FONT_SMALL_NARROWER, text, GetWindowAttribute(winId, WINDOW_WIDTH) * 8);
     FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_HINTS)));
     Usm_PrintText(winId, FONT_SMALL_NARROWER, x, 0, sUsmWinFontColors[FONT_WHITE], text);
     CopyWindowToVram(winId, COPYWIN_GFX);
@@ -737,10 +767,11 @@ static u8 Usm_GetWindowBaseColor(u8 winId)
     switch (winId) {
         case USM_WIN_CLOCK:
             return 15;
-        case USM_WIN_NAME:
-            return 11;
-        case USM_WIN_HINTS:
+        case USM_WIN_SAFARI:
             return 10;
+        case USM_WIN_NAME:
+        case USM_WIN_HINTS:
+            return 11;
         default:
             return 1;
     }
