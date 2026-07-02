@@ -118,6 +118,7 @@ struct Usm_State {
     u8 selectedVisibleIdx;
     u8 windowCount;
     u8 frameCounter;
+    u8 dpadHeldFrames;
     u8 mainTaskId;
     u8 itemOffset;
     u8 items[USM_ICO_COUNT];
@@ -285,7 +286,7 @@ static void Usm_AnimateSelectedIcon(void);
 static struct Sprite* Usm_GetIconSprite(u8 iconId);
 static void Usm_ExitStartMenu(void);
 static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId);
-static void Usm_HandleDPadInput(u8 input);
+static void Usm_HandleDPadInput();
 static enum Usm_Icons Usm_GetNextIcon(s8 change);
 static void BuildDateTimeString(u8* buf);
 static void Usm_BuildMenuItems(void);
@@ -667,6 +668,11 @@ void Usm_InitStartMenu(void)
 
 static void Task_UsmMain(u8 taskId)
 {
+    if (JOY_HELD(DPAD_ANY))
+        sUsmState->dpadHeldFrames++;
+    else
+        sUsmState->dpadHeldFrames = 0;
+
     sUsmState->frameCounter++;
     sUsmModeCallbacks[sUsmState->mode]();
 }
@@ -1128,15 +1134,23 @@ static void Usm_HandleMainInput(void)
         return;
     }
 
-    if (JOY_NEW(DPAD_ANY))
-        Usm_HandleDPadInput(JOY_NEW(DPAD_ANY));
+    Usm_HandleDPadInput();
 }
 
-static void Usm_HandleDPadInput(u8 input)
+static void Usm_HandleDPadInput()
 {
+    u8 input = 0;
     u8 curr = sUsmState->selectedVisibleIdx;
     u8 lastVisble = sUsmState->visible.count - 1;
     u8 last = sUsmState->itemCount - 1;
+
+    input = JOY_NEW(DPAD_ANY);
+
+    if (!input && (sUsmState->dpadHeldFrames % 8 == 1) && sUsmState->dpadHeldFrames > 30)
+        input = JOY_HELD(DPAD_ANY);
+
+    if (!input)
+        return;
 
     PlaySE(SE_SELECT);
 
