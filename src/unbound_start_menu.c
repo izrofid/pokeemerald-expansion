@@ -860,9 +860,9 @@ static void Usm_InsertSavedItem(enum Usm_Icons item)
         }
     }
 
-    AUTO to = &saved->items[insertIndex + 1];
-    AUTO from = &saved->items[insertIndex];
-    AUTO size = (saved->count - insertIndex) * sizeof(saved->items[0]);
+    u8* to = &saved->items[insertIndex + 1];
+    u8* from = &saved->items[insertIndex];
+    u32 size = (saved->count - insertIndex) * sizeof(saved->items[0]);
 
     memmove(to, from, size);
 
