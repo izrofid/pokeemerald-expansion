@@ -49,6 +49,7 @@
 #include "task.h"
 #include "text.h"
 #include "trainer_card.h"
+#include "trig.h"
 #include "unbound_start_menu.h"
 #include "util.h"
 #include "window.h"
@@ -603,22 +604,20 @@ static bool8 UNUSED StartMenuDexNavCallback(void)
 
 static void Usm_SpriteCallbackArrow(struct Sprite *sprite)
 {
+    s32 maxOffset = SubtractClamped(0, USM_ICO_COUNT, sUsmState->itemCount, USM_MAX_ICON_COUNT);
     bool32 show;
-    s8 maxOffset = SubtractClamped(0, USM_ICO_COUNT, sUsmState->itemCount, USM_MAX_ICON_COUNT);
 
     if (sprite->hFlip)
-    {
         show = (sUsmState->itemOffset > 0);
-    }
     else
         show = (sUsmState->itemOffset < maxOffset);
 
-    if (!show)
-    {
-        sprite->invisible = TRUE;
-        return;
-    }
-    sprite->invisible = (sUsmState->frameCounter % 32) >= 16;
+    u32 phase = (sUsmState->frameCounter * 5) % 256;
+    s32 dis = Sin(phase, 2);
+    s32 dir = sprite->hFlip ? -1 : 1;
+
+    sprite->x2 = dis * dir;
+    sprite->invisible = !show;
 }
 
 void Usm_InitStartMenu(void)
