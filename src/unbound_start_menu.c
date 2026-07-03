@@ -311,6 +311,7 @@ static void Usm_SaveItems(void);
 static bool32 Usm_IsItemAvailable(enum Usm_Icons item);
 static bool32 IsPlayerInBattlePyramid(void);
 static void Usm_CreateScrollingArrows(void);
+static bool32 Usm_IsFlashObscured(void);
 
 // Menu Callbacks
 static bool8 StartMenuPokedexCallback(void);
@@ -646,7 +647,7 @@ void Usm_InitStartMenu(void)
         return;
     }
 
-    if (GetFlashLevel())
+    if (Usm_IsFlashObscured())
     {
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_OBJWIN_ON);
         SetGpuRegBits(REG_OFFSET_WINOUT, WINOUT_WINOBJ_OBJ);
@@ -862,7 +863,8 @@ static bool32 UNUSED Usm_ShouldPrepend(enum Usm_Icons item)
 
 static const enum Usm_Icons sUsmDefaultItems[] = {
     USM_ICO_DEBUG,   USM_ICO_POKEDEX, USM_ICO_PARTY, USM_ICO_BAG,
-    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE,  USM_ICO_OPTIONS, USM_ICO_SAFARI_RETIRE
+    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE,  USM_ICO_OPTIONS,
+    USM_ICO_SAFARI_RETIRE, USM_ICO_FRONTIER_RETIRE
 };
 
 static u32 Usm_GetDefaultIndex(enum Usm_Icons item)
@@ -1000,7 +1002,7 @@ static void Usm_CreateIcons(s16 x, s16 y)
         u8 iconId = sUsmState->visible.iconIndex[i];
 
         u8 id = CreateSprite(sUsmMenuItems[iconId].template, posX, y, 1);
-        if (GetFlashLevel())
+        if (Usm_IsFlashObscured())
             gSprites[id].copyToObjWin = TRUE;
         sUsmMemory->spriteIds[i] = id;
     }
@@ -1356,7 +1358,7 @@ static u32 Usm_CreateArrowSprite(s16 x, s16 y, bool32 flip)
         SPRITE_SIZE(32x32), SPRITE_SHAPE(32x32), x, y, 0, Usm_SpriteCallbackArrow,
         TRUE);
     gSprites[spriteId].oam.priority = 0;
-    if (GetFlashLevel())
+    if (Usm_IsFlashObscured())
         gSprites[spriteId].copyToObjWin = TRUE;
     gSprites[spriteId].hFlip = flip;
     gSprites[spriteId].invisible = TRUE;
@@ -1370,7 +1372,7 @@ static u32 Usm_CreateHandSprite(s16 x, s16 y)
         SPRITE_SIZE(32x32), SPRITE_SHAPE(32x32), x, y, 0, SpriteCallbackDummy,
         TRUE);
     gSprites[spriteId].oam.priority = 0;
-    if (GetFlashLevel())
+    if (Usm_IsFlashObscured())
         gSprites[spriteId].copyToObjWin = TRUE;
     return spriteId;
 }
@@ -1399,5 +1401,10 @@ bool8 FieldCB_ReturnToFieldUsm(void)
 static bool32 IsPlayerInBattlePyramid(void)
 {
     return CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE;
+}
+
+static bool32 Usm_IsFlashObscured(void)
+{
+    return IsPlayerInBattlePyramid() || GetFlashLevel();
 }
 
