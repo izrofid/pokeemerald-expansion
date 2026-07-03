@@ -32,6 +32,7 @@
 #include "link.h"
 #include "main.h"
 #include "malloc.h"
+#include "map_name_popup.h"
 #include "menu.h"
 #include "option_menu.h"
 #include "overworld.h"
@@ -55,11 +56,13 @@
 #include "unbound_start_menu.h"
 #include "util.h"
 #include "window.h"
+#include <stdint.h>
 #include <string.h>
 #include <sys/cdefs.h>
 
-typedef bool8 (*Usm_MenuCB)(void);
+typedef bool32 (*Usm_MenuCB)(u32 state);
 typedef void (*Usm_ModeCB)(void);
+typedef void (*Usm_DeferedCB)(void);
 
 #define USM_MAX_ICON_COUNT 6
 #define USM_ICON_WIDTH 32
@@ -143,7 +146,6 @@ struct Usm_MenuItem {
     const struct SpriteTemplate* template;
     const struct CompressedSpriteSheet* sheet;
     const u8* label;
-    bool8 shouldFade;
     Usm_MenuCB callback;
 };
 
@@ -267,6 +269,7 @@ ICON_TEMPLATE(RETIRE, Retire)
 static const struct SpritePalette sSpritePalette_Icons = {.data = sIconPal, .tag = USM_PALTAG_ICON};
 
 // Static Variables
+static COMMON_DATA bool32 (*sUsmMenuCallback)(u32) = NULL;
 static EWRAM_DATA struct Usm_Memory* sUsmMemory;
 static EWRAM_DATA struct Usm_State* sUsmState;
 static EWRAM_DATA u8 sUsmSavedIcon = 0;
@@ -274,8 +277,7 @@ static EWRAM_DATA u8 sUsmSavedOffset = 0;
 
 // Tasks
 static void Task_UsmMain(u8 taskId);
-static void Task_UsmFadeAndRunCallback(u8 taskId);
-static void Task_UsmRunCallbackNoFade(u8 taskId);
+static void Usm_RunMenuCallbackAndExit(u8 taskId);
 
 // Static Functions
 static void Usm_LoadBgGfx(void);
@@ -300,6 +302,7 @@ static void Usm_ExitStartMenu(void);
 static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId);
 static void Usm_HandleDPadInput();
 static enum Usm_Icons Usm_GetNextIcon(s8 change);
+static void BuildPyramidFloorText(u8* buf);
 static void BuildDateTimeString(u8* buf);
 static void Usm_BuildMenuItems(void);
 static void Usm_AddMenuItem(enum Usm_Icons icon);
@@ -317,23 +320,25 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item);
 static bool32 IsPlayerInBattlePyramid(void);
 static void Usm_CreateScrollingArrows(void);
 static bool32 Usm_IsFlashObscured(void);
+static void Usm_RunDeferedCallback(void);
+static void Usm_DeferCallback(Usm_DeferedCB func);
 
 // Menu Callbacks
-static bool8 UsmMenuCB_Pokedex(void);
-static bool8 UsmMenuCB_Party(void);
-static bool8 UsmMenuCB_Bag(void);
-static bool8 UsmMenuCB_Pokenav(void);
-static bool8 UsmMenuCB_Trainer(void);
-static bool8 UsmMenuCB_Save(void);
-static bool8 UsmMenuCB_Options(void);
-static bool8 UsmMenuCB_Exit(void);
-static bool8 UsmMenuCB_Retire(void);
-static bool8 UsmMenuCB_RetireSafariZone(void);
-static bool8 UsmMenuCB_TrainerLinkMode(void);
-static bool8 UsmMenuCB_RetireBattlePyramid(void);
-static bool8 UsmMenuCB_BagBattlePyramid(void);
-static bool8 UsmMenuCB_Debug(void);
-static bool8 UsmMenuCB_DexNav(void);
+static bool32 UsmMenuCB_Pokedex(u32 state);
+static bool32 UsmMenuCB_Party(u32 state);
+static bool32 UsmMenuCB_Bag(u32 state);
+static bool32 UsmMenuCB_Pokenav(u32 state);
+static bool32 UsmMenuCB_Trainer(u32 state);
+static bool32 UsmMenuCB_Save(u32 state);
+static bool32 UsmMenuCB_Options(u32 state);
+static bool32 UsmMenuCB_Exit(u32 state);
+static bool32 UsmMenuCB_Retire(u32 state);
+static bool32 UsmMenuCB_RetireSafariZone(u32 state);
+static bool32 UsmMenuCB_TrainerLinkMode(u32 state);
+static bool32 UsmMenuCB_RetireBattlePyramid(u32 state);
+static bool32 UsmMenuCB_BagBattlePyramid(u32 state);
+static bool32 UsmMenuCB_Debug(u32 state);
+static bool32 UsmMenuCB_DexNav(u32 state);
 
 static void Usm_HandleMainInput(void);
 static void Usm_HandleMoveInput(void);
@@ -345,121 +350,122 @@ static Usm_ModeCB sUsmModeCallbacks[] = {
     [USM_MODE_SELECT]   = Usm_HandleSelection,
 };
 
-#define USM_MENU_ITEM(name, _label, fade)  \
+#define USM_MENU_ITEM(name, ...)  \
     {.template = &sSpriteTemplate_##name,  \
      .sheet = &sSpriteSheet_##name,        \
-     .label = COMPOUND_STRING(STR(_label)), \
-     .shouldFade = fade,                   \
+     .label = COMPOUND_STRING(DEFAULT(STR(name), __VA_ARGS__)), \
      .callback = UsmMenuCB_##name}
 
 static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
-    [USM_ICO_POKEDEX] = USM_MENU_ITEM(Pokedex, Pokédex, TRUE),
-    [USM_ICO_PARTY]   = USM_MENU_ITEM(Party, Party, TRUE),
-    [USM_ICO_BAG]     = USM_MENU_ITEM(Bag, Bag, TRUE),
-    [USM_ICO_POKENAV] = USM_MENU_ITEM(Pokenav, PokéNav, TRUE),
-    [USM_ICO_TRAINER] = USM_MENU_ITEM(Trainer, Trainer, TRUE),
-    [USM_ICO_SAVE]    = USM_MENU_ITEM(Save, Save, FALSE),
-    [USM_ICO_REST]    = USM_MENU_ITEM(Save, Rest, FALSE),
-    [USM_ICO_OPTIONS] = USM_MENU_ITEM(Options, Options, TRUE),
-    [USM_ICO_DEBUG]   = USM_MENU_ITEM(Debug, Debug, FALSE),
-    [USM_ICO_RETIRE]  = USM_MENU_ITEM(Retire, Retire, FALSE),
+    [USM_ICO_POKEDEX] = USM_MENU_ITEM(Pokedex, "Pokédex"),
+    [USM_ICO_PARTY]   = USM_MENU_ITEM(Party),
+    [USM_ICO_BAG]     = USM_MENU_ITEM(Bag),
+    [USM_ICO_POKENAV] = USM_MENU_ITEM(Pokenav, "PokéNav"),
+    [USM_ICO_TRAINER] = USM_MENU_ITEM(Trainer),
+    [USM_ICO_SAVE]    = USM_MENU_ITEM(Save),
+    [USM_ICO_REST]    = USM_MENU_ITEM(Save, "Rest"),
+    [USM_ICO_OPTIONS] = USM_MENU_ITEM(Options),
+    [USM_ICO_DEBUG]   = USM_MENU_ITEM(Debug),
+    [USM_ICO_RETIRE]  = USM_MENU_ITEM(Retire),
 };
 
-static const u8 *const sPyramidFloorNames[FRONTIER_STAGES_PER_CHALLENGE + 1] =
+static bool32 UsmMenuCB_Pokedex(u32 state)
 {
-    gText_Floor1,
-    gText_Floor2,
-    gText_Floor3,
-    gText_Floor4,
-    gText_Floor5,
-    gText_Floor6,
-    gText_Floor7,
-    gText_Peak
-};
-
-bool8 UsmMenuCB_Pokedex(void)
-{
-    if (!gPaletteFade.active)
-    {
-        IncrementGameStat(GAME_STAT_CHECKED_POKEDEX);
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
-        SetMainCallback2(CB2_OpenPokedex);
-
-        return TRUE;
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            IncrementGameStat(GAME_STAT_CHECKED_POKEDEX);
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_OpenPokedex);
+            return TRUE;
+        }
     }
-
     return FALSE;
 }
 
-static bool8 UsmMenuCB_Party(void)
+static bool32 UsmMenuCB_Party(u32 state)
 {
-    if (!gPaletteFade.active)
-    {
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
-        SetMainCallback2(CB2_PartyMenuFromStartMenu); // Display party menu
-
-        return TRUE;
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_PartyMenuFromStartMenu); // Display party menu
+            return TRUE;
+        }
     }
-
     return FALSE;
 }
 
-static bool8 UsmMenuCB_Bag(void)
+static bool32 UsmMenuCB_Bag(u32 state)
 {
     if (IsPlayerInBattlePyramid())
-    {
-       return UsmMenuCB_BagBattlePyramid();
-    }
-    else if (!gPaletteFade.active)
-    {
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
-        SetMainCallback2(CB2_BagMenuFromStartMenu); // Display bag menu
+        return UsmMenuCB_BagBattlePyramid(state);
 
-        return TRUE;
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_BagMenuFromStartMenu); // Display bag menu
+            return TRUE;
+        }
     }
 
     return FALSE;
 }
 
-static bool8 UsmMenuCB_Pokenav(void)
+static bool32 UsmMenuCB_Pokenav(u32 state)
 {
-    if (!gPaletteFade.active)
-    {
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
-        SetMainCallback2(CB2_InitPokeNav);  // Display PokéNav
-
-        return TRUE;
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_InitPokeNav); // Display PokéNav
+            return TRUE;
+        }
     }
-
     return FALSE;
 }
 
-static bool8 UsmMenuCB_Trainer(void)
+static bool32 UsmMenuCB_Trainer(u32 state)
 {
-    if (IsOverworldLinkActive()) {
-        return UsmMenuCB_TrainerLinkMode();
-    }
-    else if (!gPaletteFade.active)
-    {
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
+    if (IsOverworldLinkActive())
+        return UsmMenuCB_TrainerLinkMode(state);
 
-        if (IsOverworldLinkActive() || InUnionRoom())
-            ShowPlayerTrainerCard (CB2_ReturnToFieldWithOpenMenu); // Display trainer card
-        else if (FlagGet(FLAG_SYS_FRONTIER_PASS))
-            ShowFrontierPass(CB2_ReturnToFieldWithOpenMenu); // Display frontier pass
-        else
-            ShowPlayerTrainerCard(CB2_ReturnToFieldWithOpenMenu); // Display trainer card
-
-        return TRUE;
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            if (FlagGet(FLAG_SYS_FRONTIER_PASS))
+                ShowFrontierPass(CB2_ReturnToFieldWithOpenMenu);
+            else
+                ShowPlayerTrainerCard(CB2_ReturnToFieldWithOpenMenu);
+            return TRUE;
+        }
     }
     return FALSE;
 }
-static bool8 UsmMenuCB_Save(void)
+
+static bool32 UsmMenuCB_Save(u32 state)
 {
     sUsmSavedIcon = 0;
     sUsmSavedOffset = 0;
@@ -467,24 +473,27 @@ static bool8 UsmMenuCB_Save(void)
     LockPlayerFieldControls();
     FreezeObjectEvents();
     CreateTask(Task_SaveDialogHandleSave, 0);
-    return FALSE;
+    return TRUE;
 }
 
-static bool8 UsmMenuCB_Options(void)
+static bool32 UsmMenuCB_Options(u32 state)
 {
-    if (!gPaletteFade.active)
-    {
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
-        SetMainCallback2(CB2_InitOptionMenu); // Display option menu
-        gMain.savedCallback = CB2_ReturnToFieldWithOpenMenu;
-
-        return TRUE;
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_InitOptionMenu); // Display option menu
+            gMain.savedCallback = CB2_ReturnToFieldWithOpenMenu;
+            return TRUE;
+        }
     }
-
     return FALSE;
 }
-static bool8 UNUSED UsmMenuCB_Exit(void)
+static bool32 UNUSED UsmMenuCB_Exit(u32 state)
 {
     Usm_ExitStartMenu();
     UnlockPlayerFieldControls();
@@ -492,27 +501,26 @@ static bool8 UNUSED UsmMenuCB_Exit(void)
     return TRUE;
 }
 
-static bool8 UsmMenuCB_Retire(void)
+static bool32 UsmMenuCB_Retire(u32 state)
 {
     if (GetSafariZoneFlag())
-        return UsmMenuCB_RetireSafariZone();
+        return UsmMenuCB_RetireSafariZone(state);
     else if (IsPlayerInBattlePyramid())
-        return UsmMenuCB_RetireBattlePyramid();
+        return UsmMenuCB_RetireBattlePyramid(state);
     else
      return FALSE;
 }
 
-extern const u8 SafariZone_EventScript_RetirePrompt[];
-static bool8 UsmMenuCB_RetireSafariZone(void)
+static bool32 UsmMenuCB_RetireSafariZone(u32 state)
 {
     if (!gPaletteFade.active)
     {
-        ScriptContext_SetupScript(SafariZone_EventScript_RetirePrompt);
+        Usm_DeferCallback(SafariZoneRetirePrompt);
     }
-    return FALSE;
+    return TRUE;
 }
 
-static bool8 UsmMenuCB_TrainerLinkMode(void)
+static bool32 UsmMenuCB_TrainerLinkMode(u32 state)
 {
     if (!gPaletteFade.active)
     {
@@ -522,11 +530,10 @@ static bool8 UsmMenuCB_TrainerLinkMode(void)
 
         return TRUE;
     }
-
     return FALSE;
 }
 
-static bool8 UsmMenuCB_RetireBattlePyramid(void)
+static bool32 UsmMenuCB_RetireBattlePyramid(u32 state)
 {
     sUsmSavedIcon = 0;
     sUsmSavedOffset = 0;
@@ -534,37 +541,50 @@ static bool8 UsmMenuCB_RetireBattlePyramid(void)
     LockPlayerFieldControls();
     FreezeObjectEvents();
     CreateTask(Task_SaveDialogHandleBattlePyramidRetire, 0);
-    return FALSE;
+    return TRUE;
 }
 
-static bool8 UsmMenuCB_BagBattlePyramid(void)
+static bool32 UsmMenuCB_BagBattlePyramid(u32 state)
 {
-    if (!gPaletteFade.active)
-    {
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
-        SetMainCallback2(CB2_PyramidBagMenuFromStartMenu);
-
-        return TRUE;
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_PyramidBagMenuFromStartMenu);
+            return TRUE;
+        }
     }
-
     return FALSE;
 }
 
-static bool8 UsmMenuCB_Debug(void)
+static bool32 UsmMenuCB_Debug(u32 state)
 {
     sUsmSavedOffset = 0;
     sUsmSavedIcon = 0;
-    Debug_ShowMainMenu();
-
-return TRUE;
+    Usm_DeferCallback(Debug_ShowMainMenu);
+    return TRUE;
 }
 
-static bool8 UNUSED UsmMenuCB_DexNav(void)
+static bool32 UNUSED UsmMenuCB_DexNav(u32 state)
 {
     return FALSE;
 }
 
+static void Usm_DeferCallback(Usm_DeferedCB func)
+{
+    SetWordTaskArg(sUsmState->mainTaskId, 14, (uintptr_t)func);
+}
+
+static void Usm_RunDeferedCallback(void)
+{
+    Usm_DeferedCB func = (Usm_DeferedCB)GetWordTaskArg(sUsmState->mainTaskId, 14);
+    if (func != NULL)
+        func();
+}
 
 static void Usm_SpriteCallbackArrow(struct Sprite *sprite)
 {
@@ -583,8 +603,6 @@ static void Usm_SpriteCallbackArrow(struct Sprite *sprite)
     sprite->x2 = dis * dir;
     sprite->invisible = !show;
 }
-
-
 
 void Usm_InitStartMenu(void)
 {
@@ -616,6 +634,7 @@ void Usm_InitStartMenu(void)
     sUsmSavedIcon = 0;
     Usm_BuildMenuItems();
 
+    HideMapNamePopUpWindow();
     Usm_LoadBgGfx();
     Usm_SetupWindows();
     Usm_BuildVisibleList();
@@ -663,8 +682,22 @@ static void Usm_ShowPyramidText(void)
     FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_INFO)));
 
     BlitBitmapToWindow(winId, sUsmFloorGfx, 2, 5, 8, 8);
-    Usm_PrintText(winId, FONT_SMALL_NARROWER, 10, 1, sUsmWinFontColors[FONT_WHITE], sPyramidFloorNames[gSaveBlock2Ptr->frontier.curChallengeBattleNum]);
+    BuildPyramidFloorText(gStringVar1);
+    Usm_PrintText(winId, FONT_SMALL_NARROWER, 10, 1, sUsmWinFontColors[FONT_WHITE], gStringVar1);
     CopyWindowToVram(winId, COPYWIN_FULL);
+}
+
+static void BuildPyramidFloorText(u8* buf)
+{
+    u32 floor = gSaveBlock2Ptr->frontier.curChallengeBattleNum;
+    if (floor > FRONTIER_STAGES_PER_CHALLENGE) {
+            StringCopy(buf, COMPOUND_STRING("Peak"));
+            return;
+    }
+    buf[0] = EOS;
+    u8* bufEnd = &buf[0];
+    bufEnd = StringAppend(bufEnd, COMPOUND_STRING("Floor "));
+    bufEnd = ConvertIntToDecimalStringN(bufEnd, floor + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
 }
 
 static void Task_UsmMain(u8 taskId)
@@ -962,7 +995,6 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         case USM_ICO_REST: return IsPlayerInBattlePyramid();
         default: return TRUE;
     }
-
 }
 
 static void Usm_BuildVisibleList(void)
@@ -1100,8 +1132,6 @@ static void Usm_ExitStartMenu(void)
     DestroySprite(&gSprites[sUsmMemory->rightArrowId]);
     FreeSpriteTilesByTag(USM_TILETAG_ARROW);
 
-    DestroyTask(FindTaskIdByFunc(Task_UsmMain));
-
     CpuFastFill(0, buf, BG_SCREEN_SIZE);
     CpuFastFill(0, (void*)BG_CHAR_ADDR(2), BG_CHAR_SIZE);
     ScheduleBgCopyTilemapToVram(0);
@@ -1129,12 +1159,10 @@ static void Usm_HandleMainInput(void)
     if (JOY_NEW(A_BUTTON))
     {
         u8 iconId = Usm_GetSelectedIconId();
-
         PlaySE(SE_SELECT);
-        gMenuCallback = sUsmMenuItems[iconId].callback;
+        sUsmMenuCallback = sUsmMenuItems[iconId].callback;
         sUsmSavedIcon = sUsmState->selectedVisibleIdx;
         sUsmSavedOffset = sUsmState->itemOffset;
-
         sUsmState->mode = USM_MODE_SELECT;
         return;
     }
@@ -1217,42 +1245,24 @@ static void Usm_HandleDPadInput()
     }
 }
 
-static void Task_UsmFadeAndRunCallback(u8 taskId)
+static void Usm_RunMenuCallbackAndExit(u8 taskId)
 {
-    s16* tState = &gTasks[taskId].data[0];
-
-    switch (*tState) {
-        case 0:
-            FadeScreen(FADE_TO_BLACK, 0);
-            (*tState)++;
-            break;
-        case 1:
-            if (!gPaletteFade.active) {
-                Usm_ExitStartMenu();
-                gMenuCallback();
-                DestroyTask(taskId);
-            }
-            break;
-    }
-}
-
-static void Task_UsmRunCallbackNoFade(u8 taskId)
-{
-    if (!gPaletteFade.active) {
+    if (!sUsmMenuCallback(gTasks[taskId].data[0]))
+        gTasks[taskId].data[0]++;
+    else
+    {
         Usm_ExitStartMenu();
-        gMenuCallback();
+        Usm_RunDeferedCallback();
         DestroyTask(taskId);
     }
 }
 
 static void Usm_HandleSelection(void)
 {
-    u8 iconId = Usm_GetSelectedIconId();
-    TaskFunc func = sUsmMenuItems[iconId].shouldFade
-        ? Task_UsmFadeAndRunCallback
-        : Task_UsmRunCallbackNoFade;
-
-    gTasks[sUsmState->mainTaskId].func = func;
+    struct Task* task = &gTasks[sUsmState->mainTaskId];
+    task->data[0] = 0;
+    Usm_DeferCallback(NULL);
+    task->func = Usm_RunMenuCallbackAndExit;
 }
 
 static void Usm_HandleMoveInput(void)
