@@ -99,7 +99,7 @@ enum Usm_Windows {
     USM_WIN_NAME,
     USM_WIN_CLOCK,
     USM_WIN_HINTS,
-    USM_WIN_SAFARI,
+    USM_WIN_INFO,
     USM_WIN_COUNT,
 };
 struct Usm_VisibleIcons {
@@ -181,7 +181,7 @@ static const struct WindowTemplate sUsmWindowTemplates[] = {
         {.bg = 0, .tilemapLeft = 19, .tilemapTop = 11, .width = 11, .height = 2, .paletteNum = 14, .baseBlock = 62},
     [USM_WIN_HINTS] =
         {.bg = 0, .tilemapLeft = 0, .tilemapTop = 18, .width = 8, .height = 2, .paletteNum = 14, .baseBlock = 84},
-    [USM_WIN_SAFARI] =
+    [USM_WIN_INFO] =
         {.bg = 0, .tilemapLeft = 24, .tilemapTop = 18, .width = 6, .height = 2, .paletteNum = 14, .baseBlock = 124},
     DUMMY_WIN_TEMPLATE};
 
@@ -284,6 +284,8 @@ static enum Usm_Icons Usm_GetSelectedIconId(void);
 static struct Sprite* Usm_GetSelectedSprite(void);
 static void Usm_BuildVisibleList(void);
 static void Usm_SetupWindows();
+static bool32 Usm_IsWindowVisible(enum Usm_Windows win);
+static struct WindowTemplate Usm_GetDynamicWinTemplate(enum Usm_Windows);
 static u8 Usm_GetWindowBaseColor(u8 winId);
 static void Usm_PrintText(u8 winId, u8 fontId, s16 x, s16 y, const u8* color, const u8* str);
 static void Usm_PrintIconLabel(void);
@@ -682,8 +684,8 @@ static void Usm_ShowSafariText(void)
     if (!GetSafariZoneFlag())
         return;
 
-    u8 winId = sUsmMemory->windowIds[USM_WIN_SAFARI];
-    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_SAFARI)));
+    u8 winId = sUsmMemory->windowIds[USM_WIN_INFO];
+    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_INFO)));
 
     BlitBitmapToWindow(winId, sUsmStepGfx, 2, 5, 8, 8);
     ConvertIntToDecimalStringN(gStringVar1, gSafariZoneStepCounter, STR_CONV_MODE_LEFT_ALIGN, 3);
@@ -753,13 +755,39 @@ static void Usm_PrintButtonHints()
 static void Usm_SetupWindows()
 {
     DeactivateAllTextPrinters();
+
     for (u32 i = 0; i < USM_WIN_COUNT; i++) {
-        u8 winId = AddWindow(&sUsmWindowTemplates[i]);
+        if(!Usm_IsWindowVisible(i))
+            continue;
+        struct WindowTemplate templ = Usm_GetDynamicWinTemplate(i);
+        u8 winId = AddWindow(&templ);
         FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(i)));
-        PutWindowTilemap(winId);
-        CopyWindowToVram(winId, COPYWIN_GFX);
         sUsmMemory->windowIds[i] = winId;
         sUsmState->windowCount++;
+        PutWindowTilemap(winId);
+        CopyWindowToVram(winId, COPYWIN_GFX);
+    }
+}
+
+static bool32 Usm_IsWindowVisible(enum Usm_Windows win)
+{
+    switch (win) {
+     case USM_WIN_INFO: return GetSafariZoneFlag();
+     default: return TRUE;
+    }
+}
+
+static struct WindowTemplate Usm_GetDynamicWinTemplate(enum Usm_Windows win)
+{
+    struct WindowTemplate templ = sUsmWindowTemplates[win];
+
+    switch (win) {
+    case USM_WIN_INFO:
+    case USM_WIN_HINTS:
+        if (!GetSafariZoneFlag())
+            templ.tilemapLeft = 11;
+    default:
+        return templ;
     }
 }
 
@@ -768,11 +796,12 @@ static u8 Usm_GetWindowBaseColor(u8 winId)
     switch (winId) {
         case USM_WIN_CLOCK:
             return 15;
-        case USM_WIN_SAFARI:
+        case USM_WIN_INFO:
             return 10;
         case USM_WIN_NAME:
-        case USM_WIN_HINTS:
             return 11;
+        case USM_WIN_HINTS:
+            return GetSafariZoneFlag() ? 11 : 10;
         default:
             return 1;
     }
