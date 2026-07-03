@@ -140,7 +140,6 @@ struct Usm_Memory {
 };
 
 struct Usm_MenuItem {
-    enum Usm_Icons iconId;
     const struct SpriteTemplate* template;
     const struct CompressedSpriteSheet* sheet;
     const u8* label;
@@ -348,7 +347,6 @@ static Usm_ModeCB sUsmModeCallbacks[] = {
 static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
     [USM_ICO_POKEDEX] =
         {
-            .iconId = USM_ICO_POKEDEX,
             .template = &sSpriteTemplate_Pokedex,
             .sheet = &sSpriteSheet_Pokedex,
             .label = COMPOUND_STRING("Pokédex"),
@@ -357,7 +355,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_PARTY] =
         {
-            .iconId = USM_ICO_PARTY,
             .template = &sSpriteTemplate_Party,
             .sheet = &sSpriteSheet_Party,
             .label = COMPOUND_STRING("Party"),
@@ -366,7 +363,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_BAG] =
         {
-            .iconId = USM_ICO_BAG,
             .template = &sSpriteTemplate_Bag,
             .sheet = &sSpriteSheet_Bag,
             .label = COMPOUND_STRING("Bag"),
@@ -375,7 +371,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_POKENAV] =
         {
-            .iconId = USM_ICO_POKENAV,
             .template = &sSpriteTemplate_Pokenav,
             .sheet = &sSpriteSheet_Pokenav,
             .label = COMPOUND_STRING("PokéNav"),
@@ -384,7 +379,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_TRAINER] =
         {
-            .iconId = USM_ICO_TRAINER,
             .template = &sSpriteTemplate_Trainer,
             .sheet = &sSpriteSheet_Trainer,
             .label = COMPOUND_STRING("Trainer"),
@@ -393,7 +387,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_SAVE] =
         {
-            .iconId = USM_ICO_SAVE,
             .template = &sSpriteTemplate_Save,
             .sheet = &sSpriteSheet_Save,
             .label = COMPOUND_STRING("Save"),
@@ -402,7 +395,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_REST] =
         {
-            .iconId = USM_ICO_REST,
             .template = &sSpriteTemplate_Save,
             .sheet = &sSpriteSheet_Save,
             .label = COMPOUND_STRING("Rest"),
@@ -411,7 +403,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_OPTIONS] =
         {
-            .iconId = USM_ICO_OPTIONS,
             .template = &sSpriteTemplate_Options,
             .sheet = &sSpriteSheet_Options,
             .label = COMPOUND_STRING("Options"),
@@ -420,7 +411,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_DEBUG] =
         {
-            .iconId = USM_ICO_DEBUG,
             .template = &sSpriteTemplate_Debug,
             .sheet = &sSpriteSheet_Debug,
             .label = COMPOUND_STRING("Debug"),
@@ -429,7 +419,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_SAFARI_RETIRE] =
         {
-            .iconId = USM_ICO_SAFARI_RETIRE,
             .template = &sSpriteTemplate_Retire,
             .sheet = &sSpriteSheet_Retire,
             .label = COMPOUND_STRING("Retire"),
@@ -438,7 +427,6 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_FRONTIER_RETIRE] =
         {
-            .iconId = USM_ICO_FRONTIER_RETIRE,
             .template = &sSpriteTemplate_Retire,
             .sheet = &sSpriteSheet_Retire,
             .label = COMPOUND_STRING("Retire"),
