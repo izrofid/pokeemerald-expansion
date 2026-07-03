@@ -3,6 +3,7 @@
 #include "battle_pyramid.h"
 #include "battle_pyramid_bag.h"
 #include "bg.h"
+#include "constants/battle_frontier.h"
 #include "constants/battle_pyramid.h"
 #include "constants/characters.h"
 #include "constants/field_weather.h"
@@ -46,6 +47,7 @@
 #include "sprite.h"
 #include "start_menu.h"
 #include "string_util.h"
+#include "strings.h"
 #include "task.h"
 #include "text.h"
 #include "trainer_card.h"
@@ -162,6 +164,7 @@ static const u32 sUsmArrowGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprite
 
 static const u8 sUsmStepGfx[] = INCBIN_U8("graphics/unbound_start_menu/step.4bpp");
 static const u8 sUsmBallGfx[] = INCBIN_U8("graphics/unbound_start_menu/ball.4bpp");
+static const u8 sUsmFloorGfx[] = INCBIN_U8("graphics/unbound_start_menu/floor.4bpp");
 
 static const u16 sIconPal[] = INCBIN_U16("graphics/unbound_start_menu/sprites/icons.gbapal");
 
@@ -280,6 +283,7 @@ static void Usm_LoadBgGfx(void);
 static void Usm_CreateIcons(s16 x, s16 y);
 static void Usm_LoadIconGfx(void);
 static void Usm_ShowSafariText(void);
+static void Usm_ShowPyramidText(void);
 static enum Usm_Icons Usm_GetSelectedIconId(void);
 static struct Sprite* Usm_GetSelectedSprite(void);
 static void Usm_BuildVisibleList(void);
@@ -396,6 +400,15 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
             .shouldFade = FALSE,
             .callback = StartMenuSaveCallback,
         },
+    [USM_ICO_REST] =
+        {
+            .iconId = USM_ICO_REST,
+            .template = &sSpriteTemplate_Save,
+            .sheet = &sSpriteSheet_Save,
+            .label = COMPOUND_STRING("Rest"),
+            .shouldFade = FALSE,
+            .callback = StartMenuSaveCallback,
+        },
     [USM_ICO_OPTIONS] =
         {
             .iconId = USM_ICO_OPTIONS,
@@ -425,13 +438,25 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
         },
     [USM_ICO_FRONTIER_RETIRE] =
         {
-            .iconId = USM_ICO_SAVE,
-            .template = &sSpriteTemplate_Save,
-            .sheet = &sSpriteSheet_Save,
+            .iconId = USM_ICO_FRONTIER_RETIRE,
+            .template = &sSpriteTemplate_Retire,
+            .sheet = &sSpriteSheet_Retire,
             .label = COMPOUND_STRING("Retire"),
             .shouldFade = FALSE,
             .callback = StartMenuBattlePyramidRetireCallback,
         },
+};
+
+static const u8 *const sPyramidFloorNames[FRONTIER_STAGES_PER_CHALLENGE + 1] =
+{
+    gText_Floor1,
+    gText_Floor2,
+    gText_Floor3,
+    gText_Floor4,
+    gText_Floor5,
+    gText_Floor6,
+    gText_Floor7,
+    gText_Peak
 };
 
 bool8 StartMenuPokedexCallback(void)
@@ -676,6 +701,7 @@ void Usm_InitStartMenu(void)
     Usm_AnimateSelectedIcon();
     Usm_CreateScrollingArrows();
     Usm_ShowSafariText();
+    Usm_ShowPyramidText();
     sUsmState->mainTaskId = CreateTask(Task_UsmMain, 1);
 }
 
@@ -696,6 +722,20 @@ static void Usm_ShowSafariText(void)
     BlitBitmapToWindow(winId, sUsmBallGfx, len, 5, 8, 8);
     ConvertIntToDecimalStringN(gStringVar2, gNumSafariBalls, STR_CONV_MODE_LEFT_ALIGN, 2);
     Usm_PrintText(winId, FONT_SMALL, len + 8, 1, sUsmWinFontColors[FONT_WHITE], gStringVar2);
+    CopyWindowToVram(winId, COPYWIN_FULL);
+}
+
+
+static void Usm_ShowPyramidText(void)
+{
+    if (!IsPlayerInBattlePyramid())
+        return;
+
+    u8 winId = sUsmMemory->windowIds[USM_WIN_INFO];
+    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_INFO)));
+
+    BlitBitmapToWindow(winId, sUsmFloorGfx, 2, 5, 8, 8);
+    Usm_PrintText(winId, FONT_SMALL_NARROWER, 10, 1, sUsmWinFontColors[FONT_WHITE], sPyramidFloorNames[gSaveBlock2Ptr->frontier.curChallengeBattleNum]);
     CopyWindowToVram(winId, COPYWIN_FULL);
 }
 
@@ -772,7 +812,7 @@ static void Usm_SetupWindows()
 static bool32 Usm_IsWindowVisible(enum Usm_Windows win)
 {
     switch (win) {
-     case USM_WIN_INFO: return GetSafariZoneFlag();
+     case USM_WIN_INFO: return (GetSafariZoneFlag() || IsPlayerInBattlePyramid());
      default: return TRUE;
     }
 }
@@ -784,7 +824,7 @@ static struct WindowTemplate Usm_GetDynamicWinTemplate(enum Usm_Windows win)
     switch (win) {
     case USM_WIN_INFO:
     case USM_WIN_HINTS:
-        if (!GetSafariZoneFlag())
+        if (!GetSafariZoneFlag() && !IsPlayerInBattlePyramid())
             templ.tilemapLeft = 11;
     default:
         return templ;
@@ -801,7 +841,7 @@ static u8 Usm_GetWindowBaseColor(u8 winId)
         case USM_WIN_NAME:
             return 11;
         case USM_WIN_HINTS:
-            return GetSafariZoneFlag() ? 11 : 10;
+            return (GetSafariZoneFlag() || IsPlayerInBattlePyramid()) ? 11 : 10;
         default:
             return 1;
     }
@@ -892,7 +932,7 @@ static bool32 UNUSED Usm_ShouldPrepend(enum Usm_Icons item)
 
 static const enum Usm_Icons sUsmDefaultItems[] = {
     USM_ICO_DEBUG,   USM_ICO_POKEDEX, USM_ICO_PARTY, USM_ICO_BAG,
-    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE,  USM_ICO_OPTIONS,
+    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE, USM_ICO_REST, USM_ICO_OPTIONS,
     USM_ICO_SAFARI_RETIRE, USM_ICO_FRONTIER_RETIRE
 };
 
@@ -991,6 +1031,7 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         case USM_ICO_POKENAV: return FlagGet(FLAG_SYS_POKENAV_GET);
         case USM_ICO_FRONTIER_RETIRE: return IsPlayerInBattlePyramid();
         case USM_ICO_SAVE: return !GetSafariZoneFlag() && !IsPlayerInBattlePyramid();
+        case USM_ICO_REST: return IsPlayerInBattlePyramid();
         case USM_ICO_SAFARI_RETIRE: return GetSafariZoneFlag();
         default: return TRUE;
     }
