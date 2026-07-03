@@ -17,6 +17,13 @@ users can change the icons, or add new items.
 
 ## Showcase
 
+<img width="240" height="160" alt="pokeemerald-3" src="https://github.com/user-attachments/assets/771e663f-525d-4272-9a0e-2f2cc33a5a5b" />
+<img width="240" height="160" alt="pokeemerald-2" src="https://github.com/user-attachments/assets/156f726c-37e2-40c7-aee0-5469de4bd4e4" />
+<img width="240" height="160" alt="pokeemerald-1" src="https://github.com/user-attachments/assets/69450f2f-b57c-4c53-8d9b-7eabac97acec" />
+<img width="240" height="160" alt="pokeemerald-0" src="https://github.com/user-attachments/assets/3b1ec11d-f9df-45b0-8462-cbad876e6c88" />
+
+https://github.com/user-attachments/assets/82aa4668-2402-4ebb-90af-47913e0e1622
+
 ## Credits
 
 [![credits](https://img.shields.io/github/all-contributors/rh-hideout/pokeemerald-expansion/upcoming)](CREDITS.md)
