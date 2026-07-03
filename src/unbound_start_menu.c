@@ -319,20 +319,21 @@ static void Usm_CreateScrollingArrows(void);
 static bool32 Usm_IsFlashObscured(void);
 
 // Menu Callbacks
-static bool8 StartMenuPokedexCallback(void);
-static bool8 StartMenuPokemonCallback(void);
-static bool8 StartMenuBagCallback(void);
-static bool8 StartMenuPokeNavCallback(void);
-static bool8 StartMenuPlayerNameCallback(void);
-static bool8 StartMenuSaveCallback(void);
-static bool8 StartMenuOptionCallback(void);
-static bool8 StartMenuExitCallback(void);
-static bool8 StartMenuSafariZoneRetireCallback(void);
-static bool8 StartMenuLinkModePlayerNameCallback(void);
-static bool8 StartMenuBattlePyramidRetireCallback(void);
-static bool8 StartMenuBattlePyramidBagCallback(void);
-static bool8 StartMenuDebugCallback(void);
-static bool8 StartMenuDexNavCallback(void);
+static bool8 UsmMenuCB_Pokedex(void);
+static bool8 UsmMenuCB_Party(void);
+static bool8 UsmMenuCB_Bag(void);
+static bool8 UsmMenuCB_Pokenav(void);
+static bool8 UsmMenuCB_Trainer(void);
+static bool8 UsmMenuCB_Save(void);
+static bool8 UsmMenuCB_Options(void);
+static bool8 UsmMenuCB_Exit(void);
+static bool8 UsmMenuCB_Retire(void);
+static bool8 UsmMenuCB_RetireSafariZone(void);
+static bool8 UsmMenuCB_TrainerLinkMode(void);
+static bool8 UsmMenuCB_RetireBattlePyramid(void);
+static bool8 UsmMenuCB_BagBattlePyramid(void);
+static bool8 UsmMenuCB_Debug(void);
+static bool8 UsmMenuCB_DexNav(void);
 
 static void Usm_HandleMainInput(void);
 static void Usm_HandleMoveInput(void);
@@ -344,95 +345,24 @@ static Usm_ModeCB sUsmModeCallbacks[] = {
     [USM_MODE_SELECT]   = Usm_HandleSelection,
 };
 
+#define USM_MENU_ITEM(name, _label, fade)  \
+    {.template = &sSpriteTemplate_##name,  \
+     .sheet = &sSpriteSheet_##name,        \
+     .label = COMPOUND_STRING(STR(_label)), \
+     .shouldFade = fade,                   \
+     .callback = UsmMenuCB_##name}
+
 static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
-    [USM_ICO_POKEDEX] =
-        {
-            .template = &sSpriteTemplate_Pokedex,
-            .sheet = &sSpriteSheet_Pokedex,
-            .label = COMPOUND_STRING("Pokédex"),
-            .shouldFade = TRUE,
-            .callback = StartMenuPokedexCallback,
-        },
-    [USM_ICO_PARTY] =
-        {
-            .template = &sSpriteTemplate_Party,
-            .sheet = &sSpriteSheet_Party,
-            .label = COMPOUND_STRING("Party"),
-            .shouldFade = TRUE,
-            .callback = StartMenuPokemonCallback,
-        },
-    [USM_ICO_BAG] =
-        {
-            .template = &sSpriteTemplate_Bag,
-            .sheet = &sSpriteSheet_Bag,
-            .label = COMPOUND_STRING("Bag"),
-            .shouldFade = TRUE,
-            .callback = StartMenuBagCallback,
-        },
-    [USM_ICO_POKENAV] =
-        {
-            .template = &sSpriteTemplate_Pokenav,
-            .sheet = &sSpriteSheet_Pokenav,
-            .label = COMPOUND_STRING("PokéNav"),
-            .shouldFade = TRUE,
-            .callback = StartMenuPokeNavCallback,
-        },
-    [USM_ICO_TRAINER] =
-        {
-            .template = &sSpriteTemplate_Trainer,
-            .sheet = &sSpriteSheet_Trainer,
-            .label = COMPOUND_STRING("Trainer"),
-            .shouldFade = TRUE,
-            .callback = StartMenuPlayerNameCallback,
-        },
-    [USM_ICO_SAVE] =
-        {
-            .template = &sSpriteTemplate_Save,
-            .sheet = &sSpriteSheet_Save,
-            .label = COMPOUND_STRING("Save"),
-            .shouldFade = FALSE,
-            .callback = StartMenuSaveCallback,
-        },
-    [USM_ICO_REST] =
-        {
-            .template = &sSpriteTemplate_Save,
-            .sheet = &sSpriteSheet_Save,
-            .label = COMPOUND_STRING("Rest"),
-            .shouldFade = FALSE,
-            .callback = StartMenuSaveCallback,
-        },
-    [USM_ICO_OPTIONS] =
-        {
-            .template = &sSpriteTemplate_Options,
-            .sheet = &sSpriteSheet_Options,
-            .label = COMPOUND_STRING("Options"),
-            .shouldFade = TRUE,
-            .callback = StartMenuOptionCallback,
-        },
-    [USM_ICO_DEBUG] =
-        {
-            .template = &sSpriteTemplate_Debug,
-            .sheet = &sSpriteSheet_Debug,
-            .label = COMPOUND_STRING("Debug"),
-            .shouldFade = FALSE,
-            .callback = StartMenuDebugCallback,
-        },
-    [USM_ICO_SAFARI_RETIRE] =
-        {
-            .template = &sSpriteTemplate_Retire,
-            .sheet = &sSpriteSheet_Retire,
-            .label = COMPOUND_STRING("Retire"),
-            .shouldFade = FALSE,
-            .callback = StartMenuSafariZoneRetireCallback,
-        },
-    [USM_ICO_FRONTIER_RETIRE] =
-        {
-            .template = &sSpriteTemplate_Retire,
-            .sheet = &sSpriteSheet_Retire,
-            .label = COMPOUND_STRING("Retire"),
-            .shouldFade = FALSE,
-            .callback = StartMenuBattlePyramidRetireCallback,
-        },
+    [USM_ICO_POKEDEX] = USM_MENU_ITEM(Pokedex, Pokédex, TRUE),
+    [USM_ICO_PARTY]   = USM_MENU_ITEM(Party, Party, TRUE),
+    [USM_ICO_BAG]     = USM_MENU_ITEM(Bag, Bag, TRUE),
+    [USM_ICO_POKENAV] = USM_MENU_ITEM(Pokenav, PokéNav, TRUE),
+    [USM_ICO_TRAINER] = USM_MENU_ITEM(Trainer, Trainer, TRUE),
+    [USM_ICO_SAVE]    = USM_MENU_ITEM(Save, Save, FALSE),
+    [USM_ICO_REST]    = USM_MENU_ITEM(Save, Rest, FALSE),
+    [USM_ICO_OPTIONS] = USM_MENU_ITEM(Options, Options, TRUE),
+    [USM_ICO_DEBUG]   = USM_MENU_ITEM(Debug, Debug, FALSE),
+    [USM_ICO_RETIRE]  = USM_MENU_ITEM(Retire, Retire, FALSE),
 };
 
 static const u8 *const sPyramidFloorNames[FRONTIER_STAGES_PER_CHALLENGE + 1] =
@@ -447,7 +377,7 @@ static const u8 *const sPyramidFloorNames[FRONTIER_STAGES_PER_CHALLENGE + 1] =
     gText_Peak
 };
 
-bool8 StartMenuPokedexCallback(void)
+bool8 UsmMenuCB_Pokedex(void)
 {
     if (!gPaletteFade.active)
     {
@@ -462,7 +392,7 @@ bool8 StartMenuPokedexCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuPokemonCallback(void)
+static bool8 UsmMenuCB_Party(void)
 {
     if (!gPaletteFade.active)
     {
@@ -476,11 +406,11 @@ static bool8 StartMenuPokemonCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuBagCallback(void)
+static bool8 UsmMenuCB_Bag(void)
 {
     if (IsPlayerInBattlePyramid())
     {
-       return StartMenuBattlePyramidBagCallback();
+       return UsmMenuCB_BagBattlePyramid();
     }
     else if (!gPaletteFade.active)
     {
@@ -494,7 +424,7 @@ static bool8 StartMenuBagCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuPokeNavCallback(void)
+static bool8 UsmMenuCB_Pokenav(void)
 {
     if (!gPaletteFade.active)
     {
@@ -508,10 +438,10 @@ static bool8 StartMenuPokeNavCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuPlayerNameCallback(void)
+static bool8 UsmMenuCB_Trainer(void)
 {
     if (IsOverworldLinkActive()) {
-        return StartMenuLinkModePlayerNameCallback();
+        return UsmMenuCB_TrainerLinkMode();
     }
     else if (!gPaletteFade.active)
     {
@@ -529,7 +459,7 @@ static bool8 StartMenuPlayerNameCallback(void)
     }
     return FALSE;
 }
-static bool8 StartMenuSaveCallback(void)
+static bool8 UsmMenuCB_Save(void)
 {
     sUsmSavedIcon = 0;
     sUsmSavedOffset = 0;
@@ -540,7 +470,7 @@ static bool8 StartMenuSaveCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuOptionCallback(void)
+static bool8 UsmMenuCB_Options(void)
 {
     if (!gPaletteFade.active)
     {
@@ -554,7 +484,7 @@ static bool8 StartMenuOptionCallback(void)
 
     return FALSE;
 }
-static bool8 UNUSED StartMenuExitCallback(void)
+static bool8 UNUSED UsmMenuCB_Exit(void)
 {
     Usm_ExitStartMenu();
     UnlockPlayerFieldControls();
@@ -562,8 +492,18 @@ static bool8 UNUSED StartMenuExitCallback(void)
     return TRUE;
 }
 
+static bool8 UsmMenuCB_Retire(void)
+{
+    if (GetSafariZoneFlag())
+        return UsmMenuCB_RetireSafariZone();
+    else if (IsPlayerInBattlePyramid())
+        return UsmMenuCB_RetireBattlePyramid();
+    else
+     return FALSE;
+}
+
 extern const u8 SafariZone_EventScript_RetirePrompt[];
-static bool8 StartMenuSafariZoneRetireCallback(void)
+static bool8 UsmMenuCB_RetireSafariZone(void)
 {
     if (!gPaletteFade.active)
     {
@@ -572,7 +512,7 @@ static bool8 StartMenuSafariZoneRetireCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuLinkModePlayerNameCallback(void)
+static bool8 UsmMenuCB_TrainerLinkMode(void)
 {
     if (!gPaletteFade.active)
     {
@@ -586,7 +526,7 @@ static bool8 StartMenuLinkModePlayerNameCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuBattlePyramidRetireCallback(void)
+static bool8 UsmMenuCB_RetireBattlePyramid(void)
 {
     sUsmSavedIcon = 0;
     sUsmSavedOffset = 0;
@@ -597,7 +537,7 @@ static bool8 StartMenuBattlePyramidRetireCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuBattlePyramidBagCallback(void)
+static bool8 UsmMenuCB_BagBattlePyramid(void)
 {
     if (!gPaletteFade.active)
     {
@@ -611,7 +551,7 @@ static bool8 StartMenuBattlePyramidBagCallback(void)
     return FALSE;
 }
 
-static bool8 StartMenuDebugCallback(void)
+static bool8 UsmMenuCB_Debug(void)
 {
     sUsmSavedOffset = 0;
     sUsmSavedIcon = 0;
@@ -620,7 +560,7 @@ static bool8 StartMenuDebugCallback(void)
 return TRUE;
 }
 
-static bool8 UNUSED StartMenuDexNavCallback(void)
+static bool8 UNUSED UsmMenuCB_DexNav(void)
 {
     return FALSE;
 }
@@ -921,7 +861,7 @@ static bool32 UNUSED Usm_ShouldPrepend(enum Usm_Icons item)
 static const enum Usm_Icons sUsmDefaultItems[] = {
     USM_ICO_DEBUG,   USM_ICO_POKEDEX, USM_ICO_PARTY, USM_ICO_BAG,
     USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE, USM_ICO_REST, USM_ICO_OPTIONS,
-    USM_ICO_SAFARI_RETIRE, USM_ICO_FRONTIER_RETIRE
+    USM_ICO_RETIRE
 };
 
 static u32 Usm_GetDefaultIndex(enum Usm_Icons item)
@@ -1017,10 +957,9 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         case USM_ICO_POKEDEX: return FlagGet(FLAG_SYS_POKEDEX_GET);
         case USM_ICO_PARTY: return FlagGet(FLAG_SYS_POKEMON_GET);
         case USM_ICO_POKENAV: return FlagGet(FLAG_SYS_POKENAV_GET);
-        case USM_ICO_FRONTIER_RETIRE: return IsPlayerInBattlePyramid();
+        case USM_ICO_RETIRE: return IsPlayerInBattlePyramid() || GetSafariZoneFlag();
         case USM_ICO_SAVE: return !GetSafariZoneFlag() && !IsPlayerInBattlePyramid();
         case USM_ICO_REST: return IsPlayerInBattlePyramid();
-        case USM_ICO_SAFARI_RETIRE: return GetSafariZoneFlag();
         default: return TRUE;
     }
 
