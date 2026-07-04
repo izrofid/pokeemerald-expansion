@@ -3,6 +3,7 @@
 #include "battle_pyramid.h"
 #include "battle_pyramid_bag.h"
 #include "bg.h"
+#include "config/debug.h"
 #include "constants/battle_frontier.h"
 #include "constants/battle_pyramid.h"
 #include "constants/characters.h"
@@ -991,6 +992,7 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         case USM_ICO_RETIRE: return Usm_IsPlayerInBattlePyramid() || GetSafariZoneFlag();
         case USM_ICO_SAVE: return !GetSafariZoneFlag() && !Usm_IsPlayerInBattlePyramid();
         case USM_ICO_REST: return Usm_IsPlayerInBattlePyramid();
+        case USM_ICO_DEBUG: return DEBUG_OVERWORLD_MENU && DEBUG_OVERWORLD_IN_MENU;
         default: return TRUE;
     }
 }
