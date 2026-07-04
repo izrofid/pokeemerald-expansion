@@ -62,7 +62,7 @@
 
 typedef bool32 (*Usm_MenuCB)(u32 state);
 typedef void (*Usm_ModeCB)(void);
-typedef void (*Usm_DeferedCB)(void);
+typedef void (*Usm_DeferredCB)(void);
 
 #define USM_MAX_ICON_COUNT 6
 #define USM_ICON_WIDTH 32
@@ -302,8 +302,8 @@ static void Usm_ExitStartMenu(void);
 static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId);
 static void Usm_HandleDPadInput();
 static enum Usm_Icons Usm_GetNextIcon(s8 change);
-static void BuildPyramidFloorText(u8* buf);
-static void BuildDateTimeString(u8* buf);
+static void Usm_BuildPyramidFloorText(u8* buf);
+static void Usm_BuildDateTimeString(u8* buf);
 static void Usm_BuildMenuItems(void);
 static void Usm_AddMenuItem(enum Usm_Icons icon);
 static u32 Usm_CreateHandSprite(s16 x, s16 y);
@@ -317,11 +317,11 @@ static void Usm_StopIconAffineAnim(u8 visibleIndex);
 static void Usm_StopIconAnim(u8 visibleIndex);
 static void Usm_SaveItems(void);
 static bool32 Usm_IsItemAvailable(enum Usm_Icons item);
-static bool32 IsPlayerInBattlePyramid(void);
+static bool32 Usm_IsPlayerInBattlePyramid(void);
 static void Usm_CreateScrollingArrows(void);
 static bool32 Usm_IsFlashObscured(void);
-static void Usm_RunDeferedCallback(void);
-static void Usm_DeferCallback(Usm_DeferedCB func);
+static void Usm_RunDeferredCallback(void);
+static void Usm_DeferCallback(Usm_DeferredCB func);
 
 // Menu Callbacks
 static bool32 UsmMenuCB_Pokedex(u32 state);
@@ -406,7 +406,7 @@ static bool32 UsmMenuCB_Party(u32 state)
 
 static bool32 UsmMenuCB_Bag(u32 state)
 {
-    if (IsPlayerInBattlePyramid())
+    if (Usm_IsPlayerInBattlePyramid())
         return UsmMenuCB_BagBattlePyramid(state);
 
     switch (state) {
@@ -422,6 +422,23 @@ static bool32 UsmMenuCB_Bag(u32 state)
         }
     }
 
+    return FALSE;
+}
+
+static bool32 UsmMenuCB_BagBattlePyramid(u32 state)
+{
+    switch (state) {
+    case 0:
+        FadeScreen(FADE_TO_BLACK, 0);
+        return FALSE;
+    default:
+        if (!gPaletteFade.active) {
+            PlayRainStoppingSoundEffect();
+            CleanupOverworldWindowsAndTilemaps();
+            SetMainCallback2(CB2_PyramidBagMenuFromStartMenu);
+            return TRUE;
+        }
+    }
     return FALSE;
 }
 
@@ -465,6 +482,19 @@ static bool32 UsmMenuCB_Trainer(u32 state)
     return FALSE;
 }
 
+static bool32 UsmMenuCB_TrainerLinkMode(u32 state)
+{
+    if (!gPaletteFade.active)
+    {
+        PlayRainStoppingSoundEffect();
+        CleanupOverworldWindowsAndTilemaps();
+        ShowTrainerCardInLink(gLocalLinkPlayerId, CB2_ReturnToFieldWithOpenMenu);
+
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static bool32 UsmMenuCB_Save(u32 state)
 {
     sUsmSavedIcon = 0;
@@ -493,19 +523,12 @@ static bool32 UsmMenuCB_Options(u32 state)
     }
     return FALSE;
 }
-static bool32 UNUSED UsmMenuCB_Exit(u32 state)
-{
-    Usm_ExitStartMenu();
-    UnlockPlayerFieldControls();
-    UnfreezeObjectEvents();
-    return TRUE;
-}
 
 static bool32 UsmMenuCB_Retire(u32 state)
 {
     if (GetSafariZoneFlag())
         return UsmMenuCB_RetireSafariZone(state);
-    else if (IsPlayerInBattlePyramid())
+    else if (Usm_IsPlayerInBattlePyramid())
         return UsmMenuCB_RetireBattlePyramid(state);
     else
      return FALSE;
@@ -520,19 +543,6 @@ static bool32 UsmMenuCB_RetireSafariZone(u32 state)
     return TRUE;
 }
 
-static bool32 UsmMenuCB_TrainerLinkMode(u32 state)
-{
-    if (!gPaletteFade.active)
-    {
-        PlayRainStoppingSoundEffect();
-        CleanupOverworldWindowsAndTilemaps();
-        ShowTrainerCardInLink(gLocalLinkPlayerId, CB2_ReturnToFieldWithOpenMenu);
-
-        return TRUE;
-    }
-    return FALSE;
-}
-
 static bool32 UsmMenuCB_RetireBattlePyramid(u32 state)
 {
     sUsmSavedIcon = 0;
@@ -542,23 +552,6 @@ static bool32 UsmMenuCB_RetireBattlePyramid(u32 state)
     FreezeObjectEvents();
     CreateTask(Task_SaveDialogHandleBattlePyramidRetire, 0);
     return TRUE;
-}
-
-static bool32 UsmMenuCB_BagBattlePyramid(u32 state)
-{
-    switch (state) {
-    case 0:
-        FadeScreen(FADE_TO_BLACK, 0);
-        return FALSE;
-    default:
-        if (!gPaletteFade.active) {
-            PlayRainStoppingSoundEffect();
-            CleanupOverworldWindowsAndTilemaps();
-            SetMainCallback2(CB2_PyramidBagMenuFromStartMenu);
-            return TRUE;
-        }
-    }
-    return FALSE;
 }
 
 static bool32 UsmMenuCB_Debug(u32 state)
@@ -574,19 +567,27 @@ static bool32 UNUSED UsmMenuCB_DexNav(u32 state)
     return FALSE;
 }
 
-static void Usm_DeferCallback(Usm_DeferedCB func)
+static bool32 UNUSED UsmMenuCB_Exit(u32 state)
+{
+    Usm_ExitStartMenu();
+    UnlockPlayerFieldControls();
+    UnfreezeObjectEvents();
+    return TRUE;
+}
+
+static void Usm_DeferCallback(Usm_DeferredCB func)
 {
     SetWordTaskArg(sUsmState->mainTaskId, 14, (uintptr_t)func);
 }
 
-static void Usm_RunDeferedCallback(void)
+static void Usm_RunDeferredCallback(void)
 {
-    Usm_DeferedCB func = (Usm_DeferedCB)GetWordTaskArg(sUsmState->mainTaskId, 14);
+    Usm_DeferredCB func = (Usm_DeferredCB)GetWordTaskArg(sUsmState->mainTaskId, 14);
     if (func != NULL)
         func();
 }
 
-static void Usm_SpriteCallbackArrow(struct Sprite *sprite)
+static void SpriteCB_UsmArrow(struct Sprite *sprite)
 {
     s32 maxOffset = SubtractClamped(0, USM_ICO_COUNT, sUsmState->itemCount, USM_MAX_ICON_COUNT);
     bool32 show;
@@ -602,6 +603,32 @@ static void Usm_SpriteCallbackArrow(struct Sprite *sprite)
 
     sprite->x2 = dis * dir;
     sprite->invisible = !show;
+}
+
+static void Usm_LoadBgGfx(void)
+{
+    u8* buffer = GetBgTilemapBuffer(0);
+    CpuFastFill(0, buffer, BG_SCREEN_SIZE)
+    LoadBgTilemap(0, 0, 0, 0);
+    DecompressAndLoadBgGfxUsingHeap(0, sUsmBgTiles, 0, 0, 0);
+    DecompressDataWithHeaderWram(sUsmBgTilemap, buffer);
+    LoadPalette(gStandardMenuPalette, BG_PLTT_ID(15), PLTT_SIZE_4BPP);
+    LoadPalette(sUsmBgPalette, BG_PLTT_ID(14), PLTT_SIZE_4BPP);
+    SetBgTilemapBuffer(0, buffer);
+    ScheduleBgCopyTilemapToVram(0);
+}
+
+static void Usm_LoadIconGfx(void)
+{
+    for (u32 i = 0; i < USM_ICO_COUNT; i++) {
+        LoadCompressedSpriteSheet(sUsmMenuItems[i].sheet);
+    }
+}
+
+void Usm_LoadIconPalette(void)
+{
+    LoadSpritePalette(&sSpritePalette_Icons);
+    PreservePaletteInWeather(IndexOfSpritePaletteTag(USM_PALTAG_ICON) + 16);
 }
 
 void Usm_InitStartMenu(void)
@@ -652,54 +679,6 @@ void Usm_InitStartMenu(void)
     sUsmState->mainTaskId = CreateTask(Task_UsmMain, 1);
 }
 
-static void Usm_ShowSafariText(void)
-{
-    if (!GetSafariZoneFlag())
-        return;
-
-    u8 winId = sUsmMemory->windowIds[USM_WIN_INFO];
-    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_INFO)));
-
-    BlitBitmapToWindow(winId, sUsmStepGfx, 2, 5, 8, 8);
-    ConvertIntToDecimalStringN(gStringVar1, gSafariZoneStepCounter, STR_CONV_MODE_LEFT_ALIGN, 3);
-    Usm_PrintText(winId, FONT_SMALL, 10, 1, sUsmWinFontColors[FONT_WHITE], gStringVar1);
-
-    u32 len = GetStringWidth(FONT_SMALL, gStringVar1, 0) + 12;
-
-    BlitBitmapToWindow(winId, sUsmBallGfx, len, 5, 8, 8);
-    ConvertIntToDecimalStringN(gStringVar2, gNumSafariBalls, STR_CONV_MODE_LEFT_ALIGN, 2);
-    Usm_PrintText(winId, FONT_SMALL, len + 8, 1, sUsmWinFontColors[FONT_WHITE], gStringVar2);
-    CopyWindowToVram(winId, COPYWIN_FULL);
-}
-
-
-static void Usm_ShowPyramidText(void)
-{
-    if (!IsPlayerInBattlePyramid())
-        return;
-
-    u8 winId = sUsmMemory->windowIds[USM_WIN_INFO];
-    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_INFO)));
-
-    BlitBitmapToWindow(winId, sUsmFloorGfx, 2, 5, 8, 8);
-    BuildPyramidFloorText(gStringVar1);
-    Usm_PrintText(winId, FONT_SMALL_NARROWER, 10, 1, sUsmWinFontColors[FONT_WHITE], gStringVar1);
-    CopyWindowToVram(winId, COPYWIN_FULL);
-}
-
-static void BuildPyramidFloorText(u8* buf)
-{
-    u32 floor = gSaveBlock2Ptr->frontier.curChallengeBattleNum;
-    if (floor > FRONTIER_STAGES_PER_CHALLENGE) {
-            StringCopy(buf, COMPOUND_STRING("Peak"));
-            return;
-    }
-    buf[0] = EOS;
-    u8* bufEnd = &buf[0];
-    bufEnd = StringAppend(bufEnd, COMPOUND_STRING("Floor "));
-    bufEnd = ConvertIntToDecimalStringN(bufEnd, floor + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
-}
-
 static void Task_UsmMain(u8 taskId)
 {
     if (JOY_HELD(DPAD_ANY))
@@ -736,7 +715,7 @@ static void Usm_PrintIconLabel(void)
 static void Usm_PrintClockText()
 {
     u8 winId = sUsmMemory->windowIds[USM_WIN_CLOCK];
-    BuildDateTimeString(gStringVar4);
+    Usm_BuildDateTimeString(gStringVar4);
     s16 x = GetStringCenterAlignXOffset(FONT_SMALL, gStringVar4, GetWindowAttribute(winId, WINDOW_WIDTH) * 8);
     FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_CLOCK)));
     Usm_PrintText(sUsmMemory->windowIds[USM_WIN_CLOCK], FONT_SMALL, x, 0, sUsmWinFontColors[FONT_BLACK], gStringVar4);
@@ -751,6 +730,53 @@ static void Usm_PrintButtonHints()
     FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_HINTS)));
     Usm_PrintText(winId, FONT_SMALL_NARROWER, x, 0, sUsmWinFontColors[FONT_WHITE], text);
     CopyWindowToVram(winId, COPYWIN_GFX);
+}
+
+static void Usm_ShowSafariText(void)
+{
+    if (!GetSafariZoneFlag())
+        return;
+
+    u8 winId = sUsmMemory->windowIds[USM_WIN_INFO];
+    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_INFO)));
+
+    BlitBitmapToWindow(winId, sUsmStepGfx, 2, 5, 8, 8);
+    ConvertIntToDecimalStringN(gStringVar1, gSafariZoneStepCounter, STR_CONV_MODE_LEFT_ALIGN, 3);
+    Usm_PrintText(winId, FONT_SMALL, 10, 1, sUsmWinFontColors[FONT_WHITE], gStringVar1);
+
+    u32 len = GetStringWidth(FONT_SMALL, gStringVar1, 0) + 12;
+
+    BlitBitmapToWindow(winId, sUsmBallGfx, len, 5, 8, 8);
+    ConvertIntToDecimalStringN(gStringVar2, gNumSafariBalls, STR_CONV_MODE_LEFT_ALIGN, 2);
+    Usm_PrintText(winId, FONT_SMALL, len + 8, 1, sUsmWinFontColors[FONT_WHITE], gStringVar2);
+    CopyWindowToVram(winId, COPYWIN_FULL);
+}
+
+static void Usm_ShowPyramidText(void)
+{
+    if (!Usm_IsPlayerInBattlePyramid())
+        return;
+
+    u8 winId = sUsmMemory->windowIds[USM_WIN_INFO];
+    FillWindowPixelBuffer(winId, PIXEL_FILL(Usm_GetWindowBaseColor(USM_WIN_INFO)));
+
+    BlitBitmapToWindow(winId, sUsmFloorGfx, 2, 5, 8, 8);
+    Usm_BuildPyramidFloorText(gStringVar1);
+    Usm_PrintText(winId, FONT_SMALL_NARROWER, 10, 1, sUsmWinFontColors[FONT_WHITE], gStringVar1);
+    CopyWindowToVram(winId, COPYWIN_FULL);
+}
+
+static void Usm_BuildPyramidFloorText(u8* buf)
+{
+    u32 floor = gSaveBlock2Ptr->frontier.curChallengeBattleNum;
+    if (floor > FRONTIER_STAGES_PER_CHALLENGE) {
+            StringCopy(buf, COMPOUND_STRING("Peak"));
+            return;
+    }
+    buf[0] = EOS;
+    u8* bufEnd = &buf[0];
+    bufEnd = StringAppend(bufEnd, COMPOUND_STRING("Floor "));
+    bufEnd = ConvertIntToDecimalStringN(bufEnd, floor + 1, STR_CONV_MODE_LEFT_ALIGN, 1);
 }
 
 static void Usm_SetupWindows()
@@ -773,7 +799,7 @@ static void Usm_SetupWindows()
 static bool32 Usm_IsWindowVisible(enum Usm_Windows win)
 {
     switch (win) {
-     case USM_WIN_INFO: return (GetSafariZoneFlag() || IsPlayerInBattlePyramid());
+     case USM_WIN_INFO: return (GetSafariZoneFlag() || Usm_IsPlayerInBattlePyramid());
      default: return TRUE;
     }
 }
@@ -785,7 +811,7 @@ static struct WindowTemplate Usm_GetDynamicWinTemplate(enum Usm_Windows win)
     switch (win) {
     case USM_WIN_INFO:
     case USM_WIN_HINTS:
-        if (!GetSafariZoneFlag() && !IsPlayerInBattlePyramid())
+        if (!GetSafariZoneFlag() && !Usm_IsPlayerInBattlePyramid())
             templ.tilemapLeft = 11;
     default:
         return templ;
@@ -802,41 +828,27 @@ static u8 Usm_GetWindowBaseColor(u8 winId)
         case USM_WIN_NAME:
             return 11;
         case USM_WIN_HINTS:
-            return (GetSafariZoneFlag() || IsPlayerInBattlePyramid()) ? 11 : 10;
+            return (GetSafariZoneFlag() || Usm_IsPlayerInBattlePyramid()) ? 11 : 10;
         default:
             return 1;
     }
 }
 
-static void Usm_LoadBgGfx(void)
-{
-    u8* buffer = GetBgTilemapBuffer(0);
-    CpuFastFill(0, buffer, BG_SCREEN_SIZE)
-    LoadBgTilemap(0, 0, 0, 0);
-    DecompressAndLoadBgGfxUsingHeap(0, sUsmBgTiles, 0, 0, 0);
-    DecompressDataWithHeaderWram(sUsmBgTilemap, buffer);
-    LoadPalette(gStandardMenuPalette, BG_PLTT_ID(15), PLTT_SIZE_4BPP);
-    LoadPalette(sUsmBgPalette, BG_PLTT_ID(14), PLTT_SIZE_4BPP);
-    SetBgTilemapBuffer(0, buffer);
-    ScheduleBgCopyTilemapToVram(0);
-}
-
-
-static const u8* const sMonthNames[13] = {
+static const u8* const sUsmMonthNames[13] = {
     [MONTH_JAN] = COMPOUND_STRING("Jan"), [MONTH_FEB] = COMPOUND_STRING("Feb"), [MONTH_MAR] = COMPOUND_STRING("Mar"),
     [MONTH_APR] = COMPOUND_STRING("Apr"), [MONTH_MAY] = COMPOUND_STRING("May"), [MONTH_JUN] = COMPOUND_STRING("Jun"),
     [MONTH_JUL] = COMPOUND_STRING("Jul"), [MONTH_AUG] = COMPOUND_STRING("Aug"), [MONTH_SEP] = COMPOUND_STRING("Sep"),
     [MONTH_OCT] = COMPOUND_STRING("Oct"), [MONTH_NOV] = COMPOUND_STRING("Nov"), [MONTH_DEC] = COMPOUND_STRING("Dec"),
 };
 
-static const u8* const sWeekdayNames[WEEKDAY_COUNT] = {
+static const u8* const sUsmWeekdayNames[WEEKDAY_COUNT] = {
     [WEEKDAY_SUN] = COMPOUND_STRING("Sun"), [WEEKDAY_MON] = COMPOUND_STRING("Mon"),
     [WEEKDAY_TUE] = COMPOUND_STRING("Tue"), [WEEKDAY_WED] = COMPOUND_STRING("Wed"),
     [WEEKDAY_THU] = COMPOUND_STRING("Thu"), [WEEKDAY_FRI] = COMPOUND_STRING("Fri"),
     [WEEKDAY_SAT] = COMPOUND_STRING("Sat"),
 };
 
-static void BuildDateTimeString(u8* buf)
+static void Usm_BuildDateTimeString(u8* buf)
 {
     u8 formattedBuffer[256];
     formattedBuffer[0] = EOS;
@@ -849,7 +861,7 @@ static void BuildDateTimeString(u8* buf)
     const u8* am = COMPOUND_STRING("AM");
     const u8* pm = COMPOUND_STRING("PM");
 
-    formattedBufferEnd = StringAppend(formattedBufferEnd, sWeekdayNames[dt.dayOfWeek]);
+    formattedBufferEnd = StringAppend(formattedBufferEnd, sUsmWeekdayNames[dt.dayOfWeek]);
     formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(". "));
     formattedBufferEnd = ConvertIntToDecimalStringN(formattedBufferEnd, dt.day, STR_CONV_MODE_LEADING_ZEROS, 2);
     formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(", "));
@@ -876,19 +888,6 @@ static bool32 Usm_ListContains(enum Usm_Icons item, u8 *list, u8 count)
         if (list[i] == item)
             return TRUE;
     return FALSE;
-}
-
-static bool32 UNUSED Usm_ShouldPrepend(enum Usm_Icons item)
-{
-    switch (item)
-    {
-        case USM_ICO_POKEDEX:
-        case USM_ICO_PARTY:
-        case USM_ICO_POKENAV:
-            return TRUE;
-        default:
-            return FALSE;
-    }
 }
 
 static const enum Usm_Icons sUsmDefaultItems[] = {
@@ -990,11 +989,19 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
         case USM_ICO_POKEDEX: return FlagGet(FLAG_SYS_POKEDEX_GET);
         case USM_ICO_PARTY: return FlagGet(FLAG_SYS_POKEMON_GET);
         case USM_ICO_POKENAV: return FlagGet(FLAG_SYS_POKENAV_GET);
-        case USM_ICO_RETIRE: return IsPlayerInBattlePyramid() || GetSafariZoneFlag();
-        case USM_ICO_SAVE: return !GetSafariZoneFlag() && !IsPlayerInBattlePyramid();
-        case USM_ICO_REST: return IsPlayerInBattlePyramid();
+        case USM_ICO_RETIRE: return Usm_IsPlayerInBattlePyramid() || GetSafariZoneFlag();
+        case USM_ICO_SAVE: return !GetSafariZoneFlag() && !Usm_IsPlayerInBattlePyramid();
+        case USM_ICO_REST: return Usm_IsPlayerInBattlePyramid();
         default: return TRUE;
     }
+}
+
+static void Usm_RedrawIcons()
+{
+    Usm_BuildVisibleList();
+    Usm_DestroyVisibleIcons();
+    Usm_CreateIcons(0, USM_ICON_YPOS);
+    Usm_AnimateSelectedIcon();
 }
 
 static void Usm_BuildVisibleList(void)
@@ -1013,10 +1020,13 @@ static void Usm_BuildVisibleList(void)
     }
 }
 
-void Usm_LoadIconPalette(void)
+static void Usm_DestroyVisibleIcons(void)
 {
-    LoadSpritePalette(&sSpritePalette_Icons);
-    PreservePaletteInWeather(IndexOfSpritePaletteTag(USM_PALTAG_ICON) + 16);
+    for (u32 i = 0; i < sUsmState->visible.count; i++) {
+        struct Sprite* sprite = &gSprites[sUsmMemory->spriteIds[i]];
+        FreeSpriteOamMatrix(sprite);
+        DestroySprite(sprite);
+    }
 }
 
 static void Usm_CreateIcons(s16 x, s16 y)
@@ -1035,25 +1045,6 @@ static void Usm_CreateIcons(s16 x, s16 y)
             gSprites[id].copyToObjWin = TRUE;
         sUsmMemory->spriteIds[i] = id;
     }
-}
-
-static void Usm_LoadIconGfx(void)
-{
-    for (u32 i = 0; i < USM_ICO_COUNT; i++) {
-        LoadCompressedSpriteSheet(sUsmMenuItems[i].sheet);
-    }
-}
-
-static enum Usm_Icons Usm_GetSelectedIconId(void)
-{
-    return sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
-}
-
-static struct Sprite* Usm_GetSelectedSprite(void)
-{
-    u8 selectedId = sUsmMemory->spriteIds[sUsmState->selectedVisibleIdx];
-    struct Sprite* sprite = &gSprites[selectedId];
-    return sprite;
 }
 
 static void Usm_AnimateSelectedIcon(void)
@@ -1107,36 +1098,16 @@ static struct Sprite* Usm_GetIconSprite(u8 iconId)
     return sprite;
 }
 
-static void Usm_ExitStartMenu(void)
+static enum Usm_Icons Usm_GetSelectedIconId(void)
 {
-    Usm_SaveItems();
-    u8* buf = GetBgTilemapBuffer(0);
+    return sUsmState->visible.iconIndex[sUsmState->selectedVisibleIdx];
+}
 
-    Usm_DestroyVisibleIcons();
-
-    for (u32 i = 0; i < USM_ICO_COUNT; i++) {
-        FreeSpriteTilesByTag(sUsmMenuItems[i].template->tileTag);
-    }
-
-    for (u32 i = 0; i < sUsmState->windowCount; i++) {
-        u8 winId = sUsmMemory->windowIds[i];
-        FillWindowPixelBuffer(winId, PIXEL_FILL(0));
-        ClearWindowTilemap(winId);
-        CopyWindowToVram(winId, COPYWIN_FULL);
-        RemoveWindow(winId);
-    }
-    FreeSpritePaletteByTag(USM_PALTAG_ICON);
-    ResetPreservedPalettesInWeather();
-
-    DestroySprite(&gSprites[sUsmMemory->leftArrowId]);
-    DestroySprite(&gSprites[sUsmMemory->rightArrowId]);
-    FreeSpriteTilesByTag(USM_TILETAG_ARROW);
-
-    CpuFastFill(0, buf, BG_SCREEN_SIZE);
-    CpuFastFill(0, (void*)BG_CHAR_ADDR(2), BG_CHAR_SIZE);
-    ScheduleBgCopyTilemapToVram(0);
-
-    TRY_FREE_AND_SET_NULL(sUsmMemory);
+static struct Sprite* Usm_GetSelectedSprite(void)
+{
+    u8 selectedId = sUsmMemory->spriteIds[sUsmState->selectedVisibleIdx];
+    struct Sprite* sprite = &gSprites[selectedId];
+    return sprite;
 }
 
 static void Usm_SaveItems(void)
@@ -1193,6 +1164,61 @@ static void Usm_HandleMainInput(void)
     }
 
     Usm_HandleDPadInput();
+}
+
+static void Usm_HandleSelection(void)
+{
+    struct Task* task = &gTasks[sUsmState->mainTaskId];
+    task->data[0] = 0;
+    Usm_DeferCallback(NULL);
+    task->func = Usm_RunMenuCallbackAndExit;
+}
+
+static void Usm_HandleMoveInput(void)
+{
+    if (JOY_NEW(B_BUTTON | SELECT_BUTTON))
+    {
+        DestroySprite(&gSprites[sUsmState->move.handSpriteId]);
+        FreeSpriteTilesByTag(USM_TILETAG_HAND);
+
+        sUsmState->mode = USM_MODE_NORMAL;
+
+        Usm_RedrawIcons();
+        return;
+    }
+
+    s8 dir = 0;
+    u16 dpad = JOY_NEW(DPAD_ANY);
+
+    if (dpad & (DPAD_UP | DPAD_LEFT))
+        dir = -1;
+    else if (dpad & (DPAD_DOWN | DPAD_RIGHT))
+        dir = 1;
+
+    if (dir != 0)
+    {
+        s16 targetIndex = sUsmState->move.grabIndex + dir;
+
+        if (targetIndex >= 0 && targetIndex < sUsmState->itemCount)
+        {
+            u8 curr = sUsmState->selectedVisibleIdx;
+            u8 lastVisible = sUsmState->visible.count - 1;
+
+            if (dir > 0 && curr == lastVisible)
+                sUsmState->itemOffset++;
+            else if (dir < 0 && curr == 0)
+                sUsmState->itemOffset--;
+
+            Usm_SwapIconPos(sUsmState->move.grabIndex, targetIndex);
+            sUsmState->move.grabIndex = targetIndex;
+        }
+    }
+
+    struct Sprite *hand = &gSprites[sUsmState->move.handSpriteId];
+    struct Sprite *target = Usm_GetSelectedSprite();
+
+    hand->x = target->x;
+    hand->y = target->y - 8;
 }
 
 static void Usm_HandleDPadInput()
@@ -1252,64 +1278,9 @@ static void Usm_RunMenuCallbackAndExit(u8 taskId)
     else
     {
         Usm_ExitStartMenu();
-        Usm_RunDeferedCallback();
+        Usm_RunDeferredCallback();
         DestroyTask(taskId);
     }
-}
-
-static void Usm_HandleSelection(void)
-{
-    struct Task* task = &gTasks[sUsmState->mainTaskId];
-    task->data[0] = 0;
-    Usm_DeferCallback(NULL);
-    task->func = Usm_RunMenuCallbackAndExit;
-}
-
-static void Usm_HandleMoveInput(void)
-{
-    if (JOY_NEW(B_BUTTON | SELECT_BUTTON))
-    {
-        DestroySprite(&gSprites[sUsmState->move.handSpriteId]);
-        FreeSpriteTilesByTag(USM_TILETAG_HAND);
-
-        sUsmState->mode = USM_MODE_NORMAL;
-
-        Usm_RedrawIcons();
-        return;
-    }
-
-    s8 dir = 0;
-    u16 dpad = JOY_NEW(DPAD_ANY);
-
-    if (dpad & (DPAD_UP | DPAD_LEFT))
-        dir = -1;
-    else if (dpad & (DPAD_DOWN | DPAD_RIGHT))
-        dir = 1;
-
-    if (dir != 0)
-    {
-        s16 targetIndex = sUsmState->move.grabIndex + dir;
-
-        if (targetIndex >= 0 && targetIndex < sUsmState->itemCount)
-        {
-            u8 curr = sUsmState->selectedVisibleIdx;
-            u8 lastVisible = sUsmState->visible.count - 1;
-
-            if (dir > 0 && curr == lastVisible)
-                sUsmState->itemOffset++;
-            else if (dir < 0 && curr == 0)
-                sUsmState->itemOffset--;
-
-            Usm_SwapIconPos(sUsmState->move.grabIndex, targetIndex);
-            sUsmState->move.grabIndex = targetIndex;
-        }
-    }
-
-    struct Sprite *hand = &gSprites[sUsmState->move.handSpriteId];
-    struct Sprite *target = Usm_GetSelectedSprite();
-
-    hand->x = target->x;
-    hand->y = target->y - 8;
 }
 
 static void Usm_SwapIconPos(u8 grabIndex, u8 targetIndex)
@@ -1318,23 +1289,6 @@ static void Usm_SwapIconPos(u8 grabIndex, u8 targetIndex)
     sUsmState->selectedVisibleIdx = targetIndex - sUsmState->itemOffset;
     Usm_RedrawIcons();
     Usm_PrintIconLabel();
-}
-
-static void Usm_RedrawIcons()
-{
-    Usm_BuildVisibleList();
-    Usm_DestroyVisibleIcons();
-    Usm_CreateIcons(0, USM_ICON_YPOS);
-    Usm_AnimateSelectedIcon();
-}
-
-static void Usm_DestroyVisibleIcons(void)
-{
-    for (u32 i = 0; i < sUsmState->visible.count; i++) {
-        struct Sprite* sprite = &gSprites[sUsmMemory->spriteIds[i]];
-        FreeSpriteOamMatrix(sprite);
-        DestroySprite(sprite);
-    }
 }
 
 static enum Usm_Icons Usm_GetNextIcon(s8 change)
@@ -1357,12 +1311,11 @@ static void Usm_SwitchSelectedIcon(enum Usm_Icons iconId)
     Usm_PrintIconLabel();
 }
 
-
 static u32 Usm_CreateArrowSprite(s16 x, s16 y, bool32 flip)
 {
     u8 spriteId = Even_CreateSpriteParametrized(
         sUsmArrowGfx, USM_TILETAG_ARROW, sIconPal, USM_PALTAG_ICON,
-        SPRITE_SIZE(32x32), SPRITE_SHAPE(32x32), x, y, 0, Usm_SpriteCallbackArrow,
+        SPRITE_SIZE(32x32), SPRITE_SHAPE(32x32), x, y, 0, SpriteCB_UsmArrow,
         TRUE);
     gSprites[spriteId].oam.priority = 0;
     if (Usm_IsFlashObscured())
@@ -1384,7 +1337,7 @@ static u32 Usm_CreateHandSprite(s16 x, s16 y)
     return spriteId;
 }
 
-static void Task_WaitForFadeShowUsm(u8 taskId)
+static void Task_UsmWaitForFade(u8 taskId)
 {
     if (IsWeatherNotFadingIn()) {
         DestroyTask(taskId);
@@ -1393,25 +1346,57 @@ static void Task_WaitForFadeShowUsm(u8 taskId)
     }
 }
 
-void ReturnToFieldOpenUsm(void)
+void Usm_ReturnToFieldOpenMenu(void)
 {
-    CreateTask(Task_WaitForFadeShowUsm, 0x50);
+    CreateTask(Task_UsmWaitForFade, 0x50);
     LockPlayerFieldControls();
 }
 
-bool8 FieldCB_ReturnToFieldUsm(void)
+bool8 FieldCB_UsmReturnToField(void)
 {
-    ReturnToFieldOpenUsm();
+    Usm_ReturnToFieldOpenMenu();
     return TRUE;
 }
 
-static bool32 IsPlayerInBattlePyramid(void)
+static void Usm_ExitStartMenu(void)
+{
+    Usm_SaveItems();
+    u8* buf = GetBgTilemapBuffer(0);
+
+    Usm_DestroyVisibleIcons();
+
+    for (u32 i = 0; i < USM_ICO_COUNT; i++) {
+        FreeSpriteTilesByTag(sUsmMenuItems[i].template->tileTag);
+    }
+
+    for (u32 i = 0; i < sUsmState->windowCount; i++) {
+        u8 winId = sUsmMemory->windowIds[i];
+        FillWindowPixelBuffer(winId, PIXEL_FILL(0));
+        ClearWindowTilemap(winId);
+        CopyWindowToVram(winId, COPYWIN_FULL);
+        RemoveWindow(winId);
+    }
+    FreeSpritePaletteByTag(USM_PALTAG_ICON);
+    ResetPreservedPalettesInWeather();
+
+    DestroySprite(&gSprites[sUsmMemory->leftArrowId]);
+    DestroySprite(&gSprites[sUsmMemory->rightArrowId]);
+    FreeSpriteTilesByTag(USM_TILETAG_ARROW);
+
+    CpuFastFill(0, buf, BG_SCREEN_SIZE);
+    CpuFastFill(0, (void*)BG_CHAR_ADDR(2), BG_CHAR_SIZE);
+    ScheduleBgCopyTilemapToVram(0);
+
+    TRY_FREE_AND_SET_NULL(sUsmMemory);
+}
+
+static bool32 Usm_IsPlayerInBattlePyramid(void)
 {
     return CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE;
 }
 
 static bool32 Usm_IsFlashObscured(void)
 {
-    return IsPlayerInBattlePyramid() || GetFlashLevel();
+    return Usm_IsPlayerInBattlePyramid() || GetFlashLevel();
 }
 

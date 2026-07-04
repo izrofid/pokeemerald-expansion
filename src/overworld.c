@@ -2062,7 +2062,7 @@ void CB2_ReturnToFieldFromMultiplayer(void)
 void CB2_ReturnToFieldWithOpenMenu(void)
 {
     FieldClearVBlankHBlankCallbacks();
-    gFieldCallback2 = FieldCB_ReturnToFieldUsm;
+    gFieldCallback2 = FieldCB_UsmReturnToField;
     CB2_ReturnToField();
 }
 
