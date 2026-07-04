@@ -4,6 +4,7 @@
 #include "battle_pyramid_bag.h"
 #include "bg.h"
 #include "config/debug.h"
+#include "config/dexnav.h"
 #include "constants/battle_frontier.h"
 #include "constants/battle_pyramid.h"
 #include "constants/characters.h"
@@ -15,6 +16,7 @@
 #include "datetime.h"
 #include "debug.h"
 #include "decompress.h"
+#include "dexnav.h"
 #include "even_sprite.h"
 #include "event_data.h"
 #include "event_object_movement.h"
@@ -75,6 +77,7 @@ enum Usm_IconTiletags {
     USM_TILETAG_PARTY,
     USM_TILETAG_BAG,
     USM_TILETAG_POKENAV,
+    USM_TILETAG_DEXNAV,
     USM_TILETAG_TRAINER,
     USM_TILETAG_SAVE,
     USM_TILETAG_OPTIONS,
@@ -155,6 +158,7 @@ static const u32 sPokedexIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/spr
 static const u32 sPartyIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/party.4bpp.smol");
 static const u32 sBagIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/bag.4bpp.smol");
 static const u32 sPokenavIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/pokenav.4bpp.smol");
+static const u32 sDexnavIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/dexnav.4bpp.smol");
 static const u32 sTrainerIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/trainer.4bpp.smol");
 static const u32 sSaveIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/save.4bpp.smol");
 static const u32 sOptionsIconGfx[] = INCBIN_U32("graphics/unbound_start_menu/sprites/options.4bpp.smol");
@@ -261,6 +265,7 @@ ICON_TEMPLATE(POKEDEX, Pokedex)
 ICON_TEMPLATE(PARTY, Party)
 ICON_TEMPLATE(BAG, Bag)
 ICON_TEMPLATE(POKENAV, Pokenav)
+ICON_TEMPLATE(DEXNAV, Dexnav)
 ICON_TEMPLATE(TRAINER, Trainer)
 ICON_TEMPLATE(SAVE, Save)
 ICON_TEMPLATE(OPTIONS, Options)
@@ -339,7 +344,7 @@ static bool32 UsmMenuCB_TrainerLinkMode(u32 state);
 static bool32 UsmMenuCB_RetireBattlePyramid(u32 state);
 static bool32 UsmMenuCB_BagBattlePyramid(u32 state);
 static bool32 UsmMenuCB_Debug(u32 state);
-static bool32 UsmMenuCB_DexNav(u32 state);
+static bool32 UsmMenuCB_Dexnav(u32 state);
 
 static void Usm_HandleMainInput(void);
 static void Usm_HandleMoveInput(void);
@@ -362,6 +367,7 @@ static const struct Usm_MenuItem sUsmMenuItems[USM_ICO_COUNT] = {
     [USM_ICO_PARTY]   = USM_MENU_ITEM(Party),
     [USM_ICO_BAG]     = USM_MENU_ITEM(Bag),
     [USM_ICO_POKENAV] = USM_MENU_ITEM(Pokenav, "PokéNav"),
+    [USM_ICO_DEXNAV]  = USM_MENU_ITEM(Dexnav),
     [USM_ICO_TRAINER] = USM_MENU_ITEM(Trainer),
     [USM_ICO_SAVE]    = USM_MENU_ITEM(Save),
     [USM_ICO_REST]    = USM_MENU_ITEM(Save, "Rest"),
@@ -563,9 +569,12 @@ static bool32 UsmMenuCB_Debug(u32 state)
     return TRUE;
 }
 
-static bool32 UNUSED UsmMenuCB_DexNav(u32 state)
+static bool32 UsmMenuCB_Dexnav(u32 state)
 {
-    return FALSE;
+    sUsmSavedIcon = 0;
+    sUsmSavedOffset = 0;
+    CreateTask(Task_OpenDexNavFromStartMenu, 0);
+    return TRUE;
 }
 
 static bool32 UsmMenuCB_Exit(u32 state)
@@ -893,8 +902,8 @@ static bool32 Usm_ListContains(enum Usm_Icons item, u8 *list, u8 count)
 
 static const enum Usm_Icons sUsmDefaultItems[] = {
     USM_ICO_DEBUG,   USM_ICO_POKEDEX, USM_ICO_PARTY, USM_ICO_BAG,
-    USM_ICO_POKENAV, USM_ICO_TRAINER, USM_ICO_SAVE, USM_ICO_REST, USM_ICO_OPTIONS,
-    USM_ICO_RETIRE
+    USM_ICO_POKENAV, USM_ICO_DEXNAV, USM_ICO_TRAINER, USM_ICO_SAVE,
+    USM_ICO_REST, USM_ICO_OPTIONS, USM_ICO_RETIRE
 };
 
 static u32 Usm_GetDefaultIndex(enum Usm_Icons item)
@@ -988,13 +997,14 @@ static bool32 Usm_IsItemAvailable(enum Usm_Icons item)
 {
     switch (item) {
         case USM_ICO_POKEDEX: return FlagGet(FLAG_SYS_POKEDEX_GET);
-        case USM_ICO_PARTY: return FlagGet(FLAG_SYS_POKEMON_GET);
+        case USM_ICO_PARTY:   return FlagGet(FLAG_SYS_POKEMON_GET);
         case USM_ICO_POKENAV: return FlagGet(FLAG_SYS_POKENAV_GET);
-        case USM_ICO_RETIRE: return Usm_IsPlayerInBattlePyramid() || GetSafariZoneFlag();
-        case USM_ICO_SAVE: return !GetSafariZoneFlag() && !Usm_IsPlayerInBattlePyramid();
-        case USM_ICO_REST: return Usm_IsPlayerInBattlePyramid();
-        case USM_ICO_DEBUG: return DEBUG_OVERWORLD_MENU && DEBUG_OVERWORLD_IN_MENU;
-        default: return TRUE;
+        case USM_ICO_DEXNAV:  return DEXNAV_ENABLED;
+        case USM_ICO_RETIRE:  return Usm_IsPlayerInBattlePyramid() || GetSafariZoneFlag();
+        case USM_ICO_SAVE:    return !GetSafariZoneFlag() && !Usm_IsPlayerInBattlePyramid();
+        case USM_ICO_REST:    return Usm_IsPlayerInBattlePyramid();
+        case USM_ICO_DEBUG:   return DEBUG_OVERWORLD_MENU && DEBUG_OVERWORLD_IN_MENU;
+        default:              return TRUE;
     }
 }
 

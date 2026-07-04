@@ -6,6 +6,7 @@ enum PACKED Usm_Icons {
     USM_ICO_PARTY,
     USM_ICO_BAG,
     USM_ICO_POKENAV,
+    USM_ICO_DEXNAV,
     USM_ICO_TRAINER,
     USM_ICO_SAVE,
     USM_ICO_REST,
