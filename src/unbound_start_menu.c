@@ -855,15 +855,16 @@ static void Usm_BuildDateTimeString(u8* buf)
     u8* formattedBufferEnd = &formattedBuffer[0];
 
     struct DateTime dt;
+    u32 day = ((gLocalTime.days - 1) + 6) % 7 ;
     ConvertTimeToDateTime(&dt, &gLocalTime);
 
     u32 hour = (dt.hour + 11) % 12 + 1;
     const u8* am = COMPOUND_STRING("AM");
     const u8* pm = COMPOUND_STRING("PM");
 
-    formattedBufferEnd = StringAppend(formattedBufferEnd, sUsmWeekdayNames[dt.dayOfWeek]);
+    formattedBufferEnd = StringAppend(formattedBufferEnd, sUsmWeekdayNames[day]);
     formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(". "));
-    formattedBufferEnd = ConvertIntToDecimalStringN(formattedBufferEnd, dt.day, STR_CONV_MODE_LEADING_ZEROS, 2);
+    formattedBufferEnd = ConvertIntToDecimalStringN(formattedBufferEnd, dt.day - 1, STR_CONV_MODE_LEADING_ZEROS, 2);
     formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(", "));
     formattedBufferEnd = ConvertIntToDecimalStringN(formattedBufferEnd, hour, STR_CONV_MODE_LEADING_ZEROS, 2);
     formattedBufferEnd = StringAppend(formattedBufferEnd, COMPOUND_STRING(":"));
