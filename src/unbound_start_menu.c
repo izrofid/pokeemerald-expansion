@@ -567,9 +567,8 @@ static bool32 UNUSED UsmMenuCB_DexNav(u32 state)
     return FALSE;
 }
 
-static bool32 UNUSED UsmMenuCB_Exit(u32 state)
+static bool32 UsmMenuCB_Exit(u32 state)
 {
-    Usm_ExitStartMenu();
     UnlockPlayerFieldControls();
     UnfreezeObjectEvents();
     return TRUE;
@@ -1141,9 +1140,8 @@ static void Usm_HandleMainInput(void)
     if (JOY_NEW(B_BUTTON))
     {
         PlaySE(SE_PC_OFF);
-        Usm_ExitStartMenu();
-        UnfreezeObjectEvents();
-        UnlockPlayerFieldControls();
+        sUsmMenuCallback = UsmMenuCB_Exit;
+        sUsmState->mode = USM_MODE_SELECT;
         return;
     }
 
