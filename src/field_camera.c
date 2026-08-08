@@ -23,8 +23,8 @@ struct FieldCameraOffset
     bool8 copyBGToVRAM;
 };
 
-static void RedrawMapSliceNorth(struct FieldCameraOffset *, const struct MapLayout *);
 static void RedrawMapSliceSouth(struct FieldCameraOffset *, const struct MapLayout *);
+static void RedrawMapSliceNorth(struct FieldCameraOffset *, const struct MapLayout *);
 static void RedrawMapSliceWest(struct FieldCameraOffset *, const struct MapLayout *);
 static void RedrawMapSliceEast(struct FieldCameraOffset *, const struct MapLayout *);
 static s32 MapPosToBgTilemapOffset(struct FieldCameraOffset *, s32, s32);
@@ -129,13 +129,13 @@ static void RedrawMapSlicesForCameraUpdate(struct FieldCameraOffset *cameraOffse
     if (deltaX < 0)
         RedrawMapSliceWest(cameraOffset, mapLayout);
     if (deltaY > 0)
-        RedrawMapSliceNorth(cameraOffset, mapLayout);
-    if (deltaY < 0)
         RedrawMapSliceSouth(cameraOffset, mapLayout);
+    if (deltaY < 0)
+        RedrawMapSliceNorth(cameraOffset, mapLayout);
     cameraOffset->copyBGToVRAM = TRUE;
 }
 
-static void RedrawMapSliceNorth(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
+static void RedrawMapSliceSouth(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
 {
     u8 i;
     u32 rowOffset;
@@ -155,7 +155,7 @@ static void RedrawMapSliceNorth(struct FieldCameraOffset *cameraOffset, const st
     }
 }
 
-static void RedrawMapSliceSouth(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
+static void RedrawMapSliceNorth(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
 {
     u8 i;
     u32 rowOffset = cameraOffset->yTileOffset * SCREEN_WIDTH;
